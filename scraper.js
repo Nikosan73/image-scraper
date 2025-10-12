@@ -1,7 +1,7 @@
 (function(){
 
 // VERSION
-var VERSION = '1.0.5';
+var VERSION = '1.0.6';
 
 var HANDLERS={
   allsop:{
@@ -229,6 +229,12 @@ for(var key in HANDLERS){
 }
 
 var urls=handler.extract();
+
+// Filter out any PDFs from image URLs
+urls=urls.filter(function(url){
+  return !url.match(/\.pdf(\?|#|$)/i);
+});
+
 var pdfs=extractPDFs();
 var siteName=handler.name;
 var propertyTitle=document.title||'Property';
@@ -258,23 +264,17 @@ document.getElementById('htmlBtn').onclick=function(){
   btn.disabled=true;
   btn.textContent='Processing...';
   
-  // Filter out any PDFs from the urls array before processing
-  var imageUrls=urls.filter(function(url){
-    return !url.match(/\.pdf(\?|$)/i);
-  });
-  
   var imageDimensions=[];
-  var processed=0;
   
   function processNextImage(index){
-    if(index>=imageUrls.length){
+    if(index>=urls.length){
       generateHTML();
       return;
     }
     
-    btn.textContent='Processing '+(index+1)+'/'+imageUrls.length+'...';
+    btn.textContent='Processing '+(index+1)+'/'+urls.length+'...';
     
-    var currentUrl=imageUrls[index];
+    var currentUrl=urls[index];
     var img=new Image();
     var done=false;
     

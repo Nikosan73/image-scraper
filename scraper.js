@@ -151,7 +151,7 @@ div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-5
 
 div.innerHTML = '<h2 style="margin-top:0;">Found ' + urls.length + ' Images</h2>' +
   '<p style="color:#666;margin-bottom:20px;">Detected: <strong>' + siteName + '</strong> scraper</p>' +
-  '<button id="htmlBtn" style="width:100%;padding:15px;margin:10px 0;background:#007bff;color:white;border:none;border-radius:4px;cursor:pointer;font-size:16px;font-weight:bold;">📄 Download HTML Viewer</button>' +
+  '<button id="htmlBtn" style="width:100%;padding:15px;margin:10px 0;background:#007bff;color:white;border:none;border-radius:4px;cursor:pointer;font-size:16px;font-weight:bold;">📄 Download Advanced HTML Viewer</button>' +
   '<button id="csvBtn" style="width:100%;padding:15px;margin:10px 0;background:#28a745;color:white;border:none;border-radius:4px;cursor:pointer;font-size:16px;font-weight:bold;">📊 Download CSV</button>' +
   '<button id="copyBtn" style="width:100%;padding:15px;margin:10px 0;background:#17a2b8;color:white;border:none;border-radius:4px;cursor:pointer;font-size:16px;font-weight:bold;">📋 Copy URLs</button>' +
   '<button id="closeBtn" style="width:100%;padding:15px;margin:10px 0;background:#dc3545;color:white;border:none;border-radius:4px;cursor:pointer;font-size:16px;font-weight:bold;">❌ Close</button>';
@@ -159,22 +159,282 @@ div.innerHTML = '<h2 style="margin-top:0;">Found ' + urls.length + ' Images</h2>
 document.body.appendChild(div);
 
 // ========================================
-// BUTTON: DOWNLOAD HTML VIEWER
+// BUTTON: DOWNLOAD ADVANCED HTML VIEWER
 // ========================================
 
 document.getElementById('htmlBtn').onclick = function(){
-  var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + siteName + ' Images</title></head><body style="font-family:Arial;padding:20px;background:#f5f5f5;"><h1>Found ' + urls.length + ' Images</h1><p>From: ' + siteName + ' scraper</p>';
+  var propertyTitle = document.title || 'Property';
+  var propertyUrl = window.location.href;
+  var hostname = window.location.hostname.replace('www.', '') || 'local';
   
+  var html = '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<title>' + hostname + ' Images</title>\n<style>\n' +
+    '*{margin:0;padding:0;box-sizing:border-box;}\n' +
+    'body{font-family:Arial,sans-serif;padding:20px;background:#f5f5f5;}\n' +
+    'h1{color:#333;margin-bottom:10px;}\n' +
+    '.subtitle{color:#666;font-size:14px;margin-bottom:20px;}\n' +
+    '.filters{background:#f8f9fa;padding:20px;margin-bottom:20px;border-radius:4px;border:1px solid #dee2e6;}\n' +
+    '.filters h3{margin-bottom:15px;color:#333;font-size:16px;}\n' +
+    '.filter-row{display:flex;gap:15px;margin-bottom:15px;align-items:center;flex-wrap:wrap;}\n' +
+    '.filter-row label{font-weight:bold;color:#555;min-width:100px;}\n' +
+    '.filter-row input[type="number"]{padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;}\n' +
+    '.filter-row button{padding:8px 16px;background:#007bff;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;}\n' +
+    '.filter-row button:hover{background:#0056b3;}\n' +
+    '.filter-row button.reset{background:#6c757d;}\n' +
+    '.filter-row button.reset:hover{background:#545b62;}\n' +
+    '.selection-controls{background:#fff3cd;padding:15px;margin-bottom:20px;border-radius:4px;border:1px solid #ffc107;display:flex;gap:10px;flex-wrap:wrap;align-items:center;}\n' +
+    '.selection-controls button{padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px;}\n' +
+    '.select-all{background:#28a745;color:white;}\n' +
+    '.select-all:hover{background:#218838;}\n' +
+    '.select-none{background:#dc3545;color:white;}\n' +
+    '.select-none:hover{background:#c82333;}\n' +
+    '.select-large{background:#17a2b8;color:white;}\n' +
+    '.select-large:hover{background:#138496;}\n' +
+    '.delete-selected{background:#fd7e14;color:white;}\n' +
+    '.delete-selected:hover{background:#e8590c;}\n' +
+    '.stats{background:#e7f3ff;padding:15px;margin-bottom:20px;border-radius:4px;display:none;}\n' +
+    '.stats div{margin:5px 0;}\n' +
+    '.button-group{margin-bottom:20px;display:flex;gap:10px;flex-wrap:wrap;}\n' +
+    '.download-all-btn{padding:12px 24px;background:#28a745;color:white;border:none;border-radius:4px;font-size:16px;cursor:pointer;font-weight:bold;flex:1;min-width:180px;}\n' +
+    '.download-all-btn:hover{background:#218838;}\n' +
+    '.download-all-btn:disabled{background:#6c757d;cursor:not-allowed;}\n' +
+    '.csv-btn{padding:12px 24px;background:#17a2b8;color:white;border:none;border-radius:4px;font-size:16px;cursor:pointer;font-weight:bold;flex:1;min-width:180px;}\n' +
+    '.csv-btn:hover{background:#138496;}\n' +
+    '.csv-btn:disabled{background:#6c757d;cursor:not-allowed;}\n' +
+    '#status{width:100%;margin-top:10px;color:#666;font-weight:bold;}\n' +
+    '.image-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px;}\n' +
+    '.image-card{background:white;padding:15px;border-radius:4px;box-shadow:0 2px 4px rgba(0,0,0,0.1);transition:all 0.3s;position:relative;}\n' +
+    '.image-card.hidden{display:none;}\n' +
+    '.image-card.deleted{display:none;}\n' +
+    '.image-card.selected{border:3px solid #28a745;box-shadow:0 4px 8px rgba(40,167,69,0.3);}\n' +
+    '.image-card.error{opacity:0.5;}\n' +
+    '.image-card h3{margin-bottom:10px;color:#333;font-size:16px;}\n' +
+    '.image-card .dimensions{color:#666;font-size:13px;margin-bottom:10px;font-weight:bold;}\n' +
+    '.image-card .checkbox-wrapper{position:absolute;top:10px;right:10px;}\n' +
+    '.image-card input[type="checkbox"]{width:24px;height:24px;cursor:pointer;}\n' +
+    '.image-card img{width:100%;height:auto;border:1px solid #ddd;cursor:pointer;}\n' +
+    '.image-card a{display:inline-block;margin-top:10px;padding:8px 16px;background:#007bff;color:white;text-decoration:none;border-radius:4px;font-size:14px;}\n' +
+    '.image-card a:hover{background:#0056b3;}\n' +
+    '</style>\n</head>\n<body>\n' +
+    '<h1>Found ' + urls.length + ' Images</h1>\n' +
+    '<div class="subtitle">From: ' + hostname + ' (' + siteName + ' scraper)</div>\n' +
+    '<div class="stats" id="stats"><strong>📐 Image Statistics:</strong><div id="statsContent"></div></div>\n' +
+    '<div class="filters">\n<h3>🔍 Filter Images</h3>\n' +
+    '<div class="filter-row">\n' +
+    '<label>Min Width:</label><input type="number" id="minWidth" placeholder="e.g., 1000" style="width:120px;">\n' +
+    '<label style="margin-left:20px;">Min Height:</label><input type="number" id="minHeight" placeholder="e.g., 800" style="width:120px;">\n' +
+    '<label style="margin-left:20px;">Min MP:</label><input type="number" id="minMP" placeholder="e.g., 2" step="0.1" style="width:120px;">\n' +
+    '<button onclick="applyFilters()" style="margin-left:10px;">Apply Filters</button>\n' +
+    '<button class="reset" onclick="resetFilters()" style="margin-left:5px;">Reset</button>\n' +
+    '</div>\n<div id="filterStatus" style="margin-top:10px;color:#666;font-size:14px;"></div>\n</div>\n' +
+    '<div class="selection-controls">\n' +
+    '<button class="select-all" onclick="selectAll()">✓ Select All Visible</button>\n' +
+    '<button class="select-none" onclick="selectNone()">✗ Deselect All</button>\n' +
+    '<button class="select-large" onclick="selectLarge()">Select Large (>2MP)</button>\n' +
+    '<button class="delete-selected" onclick="deleteSelected()">🗑️ Delete Selected</button>\n' +
+    '<span style="flex:1;"></span>\n' +
+    '<strong style="align-self:center;color:#856404;" id="selectedCount">0 selected</strong>\n' +
+    '</div>\n' +
+    '<div class="button-group">\n' +
+    '<button class="download-all-btn" onclick="downloadSelected()">⬇️ Download Selected</button>\n' +
+    '<button class="csv-btn" onclick="exportCSV()">📊 Export Selected to CSV</button>\n' +
+    '<div id="status"></div>\n' +
+    '</div>\n' +
+    '<div class="image-gallery" id="gallery">\n';
+  
+  // Add image cards
   urls.forEach(function(url, i){
-    html += '<div style="background:white;padding:15px;margin:15px 0;border-radius:4px;box-shadow:0 2px 4px rgba(0,0,0,0.1);">' +
-      '<h3>Image ' + (i+1) + '</h3>' +
-      '<img src="' + url + '" style="max-width:100%;border:1px solid #ddd;"><br>' +
-      '<a href="' + url + '" download="Image_' + (i+1) + '.jpg" style="display:inline-block;margin-top:10px;padding:8px 16px;background:#007bff;color:white;text-decoration:none;border-radius:4px;">Download Image ' + (i+1) + '</a>' +
-      '</div>';
+    html += '<div class="image-card" id="card' + i + '" data-index="' + i + '" data-original-index="' + i + '">\n' +
+      '<div class="checkbox-wrapper"><input type="checkbox" id="check' + i + '" onchange="updateSelection()"></div>\n' +
+      '<h3>Image ' + (i+1) + '</h3>\n' +
+      '<div class="dimensions" id="dim' + i + '">📐 Loading...</div>\n' +
+      '<img src="' + url + '" alt="Image ' + (i+1) + '" id="img' + i + '" onclick="window.open(\'' + url + '\',\'_blank\')">\n' +
+      '<a href="' + url + '" target="_blank">Open Full Size →</a>\n' +
+      '</div>\n';
   });
   
-  html += '</body></html>';
+  html += '</div>\n<script>\n' +
+    'const imageUrls=' + JSON.stringify(urls) + ';\n' +
+    'const propertyTitle="' + propertyTitle.replace(/"/g, '\\"') + '";\n' +
+    'const propertyUrl="' + propertyUrl + '";\n' +
+    'const imageDimensions=[];\n' +
+    'let allLoaded=false;\n' +
+    'let loadedCount=0;\n' +
+    'let errorCount=0;\n' +
+    'let deletedIndices=new Set();\n' +
+    'window.onload=function(){\n' +
+    'const imgs=document.querySelectorAll(\'.image-gallery img\');\n' +
+    'const widths=[];\n' +
+    'const heights=[];\n' +
+    'imgs.forEach((img,i)=>{\n' +
+    'const updateDimensions=function(){\n' +
+    'const w=img.naturalWidth;\n' +
+    'const h=img.naturalHeight;\n' +
+    'if(w>0&&h>0){\n' +
+    'const mp=(w*h/1000000).toFixed(1);\n' +
+    'imageDimensions[i]={width:w,height:h,megapixels:parseFloat(mp)};\n' +
+    'widths.push(w);\n' +
+    'heights.push(h);\n' +
+    'document.getElementById(\'dim\'+i).textContent=\'📐 \'+w+\' × \'+h+\' px (\'+mp+\' MP)\';\n' +
+    'document.getElementById(\'card\'+i).setAttribute(\'data-width\',w);\n' +
+    'document.getElementById(\'card\'+i).setAttribute(\'data-height\',h);\n' +
+    'document.getElementById(\'card\'+i).setAttribute(\'data-mp\',mp);\n' +
+    '}else{\n' +
+    'document.getElementById(\'dim\'+i).textContent=\'📐 Invalid image\';\n' +
+    'document.getElementById(\'card\'+i).classList.add(\'error\');\n' +
+    'imageDimensions[i]={width:0,height:0,megapixels:0};\n' +
+    'document.getElementById(\'card\'+i).setAttribute(\'data-width\',\'0\');\n' +
+    'document.getElementById(\'card\'+i).setAttribute(\'data-height\',\'0\');\n' +
+    'document.getElementById(\'card\'+i).setAttribute(\'data-mp\',\'0\');\n' +
+    '}\n' +
+    'loadedCount++;\n' +
+    'if(loadedCount===imgs.length){\n' +
+    'allLoaded=true;\n' +
+    'if(widths.length>0){\n' +
+    'const avgW=Math.round(widths.reduce((a,b)=>a+b,0)/widths.length);\n' +
+    'const avgH=Math.round(heights.reduce((a,b)=>a+b,0)/heights.length);\n' +
+    'const maxW=Math.max(...widths);\n' +
+    'const maxH=Math.max(...heights);\n' +
+    'document.getElementById(\'stats\').style.display=\'block\';\n' +
+    'document.getElementById(\'statsContent\').innerHTML=\'<div>Valid Images: \'+(imgs.length-errorCount)+\'</div><div>Average: \'+avgW+\' × \'+avgH+\' px</div><div>Largest: \'+maxW+\' × \'+maxH+\' px</div>\';\n' +
+    '}\n' +
+    '}\n' +
+    '};\n' +
+    'img.onload=updateDimensions;\n' +
+    'img.onerror=function(){\n' +
+    'document.getElementById(\'dim\'+i).textContent=\'📐 Failed to load\';\n' +
+    'document.getElementById(\'card\'+i).classList.add(\'error\');\n' +
+    'imageDimensions[i]={width:0,height:0,megapixels:0};\n' +
+    'document.getElementById(\'card\'+i).setAttribute(\'data-width\',\'0\');\n' +
+    'document.getElementById(\'card\'+i).setAttribute(\'data-height\',\'0\');\n' +
+    'document.getElementById(\'card\'+i).setAttribute(\'data-mp\',\'0\');\n' +
+    'errorCount++;\n' +
+    'loadedCount++;\n' +
+    '};\n' +
+    'if(img.complete){updateDimensions();}\n' +
+    '});\n' +
+    '};\n' +
+    'function applyFilters(){\n' +
+    'if(!allLoaded){alert(\'Please wait for all images to load first!\');return;}\n' +
+    'const minW=parseInt(document.getElementById(\'minWidth\').value)||0;\n' +
+    'const minH=parseInt(document.getElementById(\'minHeight\').value)||0;\n' +
+    'const minMP=parseFloat(document.getElementById(\'minMP\').value)||0;\n' +
+    'let hiddenCount=0;\n' +
+    'document.querySelectorAll(\'.image-card:not(.deleted)\').forEach(card=>{\n' +
+    'const w=parseInt(card.getAttribute(\'data-width\'))||0;\n' +
+    'const h=parseInt(card.getAttribute(\'data-height\'))||0;\n' +
+    'const mp=parseFloat(card.getAttribute(\'data-mp\'))||0;\n' +
+    'if(w>=minW&&h>=minH&&mp>=minMP){card.classList.remove(\'hidden\');}else{card.classList.add(\'hidden\');hiddenCount++;}\n' +
+    '});\n' +
+    'const totalVisible=imageUrls.length-deletedIndices.size;\n' +
+    'const visibleCount=totalVisible-hiddenCount;\n' +
+    'document.getElementById(\'filterStatus\').textContent=\'Showing \'+visibleCount+\' of \'+totalVisible+\' images (\'+errorCount+\' failed, \'+deletedIndices.size+\' deleted)\';\n' +
+    'updateSelection();\n' +
+    '}\n' +
+    'function resetFilters(){\n' +
+    'document.getElementById(\'minWidth\').value=\'\';\n' +
+    'document.getElementById(\'minHeight\').value=\'\';\n' +
+    'document.getElementById(\'minMP\').value=\'\';\n' +
+    'document.querySelectorAll(\'.image-card:not(.deleted)\').forEach(card=>{card.classList.remove(\'hidden\');});\n' +
+    'document.getElementById(\'filterStatus\').textContent=\'\';\n' +
+    'updateSelection();\n' +
+    '}\n' +
+    'function selectAll(){\n' +
+    'document.querySelectorAll(\'.image-card:not(.hidden):not(.error):not(.deleted) input[type="checkbox"]\').forEach(cb=>{\n' +
+    'cb.checked=true;cb.parentElement.parentElement.classList.add(\'selected\');\n' +
+    '});\n' +
+    'updateSelection();\n' +
+    '}\n' +
+    'function selectNone(){\n' +
+    'document.querySelectorAll(\'input[type="checkbox"]\').forEach(cb=>{cb.checked=false;cb.parentElement.parentElement.classList.remove(\'selected\');});\n' +
+    'updateSelection();\n' +
+    '}\n' +
+    'function selectLarge(){\n' +
+    'document.querySelectorAll(\'.image-card:not(.deleted)\').forEach(card=>{\n' +
+    'const mp=parseFloat(card.getAttribute(\'data-mp\'))||0;\n' +
+    'const checkbox=card.querySelector(\'input[type="checkbox"]\');\n' +
+    'if(mp>2&&!card.classList.contains(\'hidden\')&&!card.classList.contains(\'error\')){\n' +
+    'checkbox.checked=true;card.classList.add(\'selected\');\n' +
+    '}else{checkbox.checked=false;card.classList.remove(\'selected\');}\n' +
+    '});\n' +
+    'updateSelection();\n' +
+    '}\n' +
+    'function deleteSelected(){\n' +
+    'const selected=getSelectedIndices();\n' +
+    'if(selected.length===0){alert(\'Please select at least one image to delete!\');return;}\n' +
+    'if(!confirm(\'Delete \'+selected.length+\' selected images? This cannot be undone in this session.\')){return;}\n' +
+    'selected.forEach(idx=>{\n' +
+    'deletedIndices.add(idx);\n' +
+    'const card=document.getElementById(\'card\'+idx);\n' +
+    'if(card){card.classList.add(\'deleted\');card.querySelector(\'input[type="checkbox"]\').checked=false;}\n' +
+    '});\n' +
+    'updateSelection();\n' +
+    'document.getElementById(\'filterStatus\').textContent=deletedIndices.size+\' images deleted\';\n' +
+    '}\n' +
+    'function updateSelection(){\n' +
+    'const checkboxes=document.querySelectorAll(\'.image-card:not(.hidden):not(.deleted) input[type="checkbox"]\');\n' +
+    'const selectedCount=Array.from(checkboxes).filter(cb=>cb.checked).length;\n' +
+    'document.getElementById(\'selectedCount\').textContent=selectedCount+\' selected\';\n' +
+    'document.querySelectorAll(\'.image-card\').forEach(card=>{\n' +
+    'const checkbox=card.querySelector(\'input[type="checkbox"]\');\n' +
+    'if(checkbox.checked){card.classList.add(\'selected\');}else{card.classList.remove(\'selected\');}\n' +
+    '});\n' +
+    '}\n' +
+    'function getSelectedIndices(){\n' +
+    'const selected=[];\n' +
+    'document.querySelectorAll(\'input[type="checkbox"]:checked\').forEach(cb=>{\n' +
+    'const card=cb.closest(\'.image-card\');\n' +
+    'const index=parseInt(card.getAttribute(\'data-original-index\'));\n' +
+    'selected.push(index);\n' +
+    '});\n' +
+    'return selected.sort((a,b)=>a-b);\n' +
+    '}\n' +
+    'function exportCSV(){\n' +
+    'const selected=getSelectedIndices();\n' +
+    'if(selected.length===0){alert(\'Please select at least one image!\');return;}\n' +
+    'const btn=document.querySelector(\'.csv-btn\');\n' +
+    'btn.disabled=true;btn.textContent=\'Exporting...\';\n' +
+    'const csv=\'Property,URL,Image Number,Image URL,Width (px),Height (px),Megapixels\\\\n\'+selected.map((origIdx,newIdx)=>{\n' +
+    'const dim=imageDimensions[origIdx]||{width:0,height:0,megapixels:0};\n' +
+    'return\'"\'+propertyTitle.replace(/"/g,\'""\')+\'","\'+propertyUrl+\'","\'+(newIdx+1)+\'","\'+imageUrls[origIdx]+\'",\'+dim.width+\',\'+dim.height+\',\'+dim.megapixels;\n' +
+    '}).join(\'\\\\n\');\n' +
+    'const blob=new Blob([csv],{type:\'text/csv\'});\n' +
+    'const url=URL.createObjectURL(blob);\n' +
+    'const a=document.createElement(\'a\');\n' +
+    'a.href=url;a.download=\'selected_images_\'+Date.now()+\'.csv\';\n' +
+    'document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);\n' +
+    'btn.textContent=\'✓ CSV Exported!\';setTimeout(()=>{btn.textContent=\'📊 Export Selected to CSV\';btn.disabled=false;},2000);\n' +
+    '}\n' +
+    'async function downloadSelected(){\n' +
+    'const selected=getSelectedIndices();\n' +
+    'if(selected.length===0){alert(\'Please select at least one image!\');return;}\n' +
+    'const btn=document.querySelector(\'.download-all-btn\');\n' +
+    'const status=document.getElementById(\'status\');\n' +
+    'btn.disabled=true;btn.textContent=\'Downloading...\';\n' +
+    'status.textContent=\'Starting...\';\n' +
+    'for(let i=0;i<selected.length;i++){\n' +
+    'const origIdx=selected[i];\n' +
+    'const newIdx=i+1;\n' +
+    'try{\n' +
+    'status.textContent=\'Downloading \'+newIdx+\'/\'+selected.length+\'...\';\n' +
+    'const response=await fetch(imageUrls[origIdx]);\n' +
+    'const blob=await response.blob();\n' +
+    'const url=URL.createObjectURL(blob);\n' +
+    'const a=document.createElement(\'a\');\n' +
+    'a.href=url;a.download=\'Image_\'+newIdx+\'.jpg\';\n' +
+    'document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);\n' +
+    'await new Promise(resolve=>setTimeout(resolve,500));\n' +
+    '}catch(error){\n' +
+    'console.error(\'Download error:\',error);\n' +
+    'status.textContent=\'Error on image \'+newIdx+\', continuing...\';\n' +
+    'await new Promise(resolve=>setTimeout(resolve,1000));\n' +
+    '}\n' +
+    '}\n' +
+    'status.textContent=\'✅ Done! Downloaded \'+selected.length+\' images.\';\n' +
+    'btn.textContent=\'⬇️ Download Selected\';btn.disabled=false;\n' +
+    '}\n' +
+    '<\/script>\n</body>\n</html>';
   
+  // Download the HTML file
   var blob = new Blob([html], {type: 'text/html'});
   var blobUrl = URL.createObjectURL(blob);
   var a = document.createElement('a');
@@ -184,11 +444,12 @@ document.getElementById('htmlBtn').onclick = function(){
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(blobUrl);
-  alert('HTML file downloaded!');
+  
+  alert('Advanced HTML viewer downloaded!\n\nOpen it to filter, select, delete, and download images with incremental naming.');
 };
 
 // ========================================
-// BUTTON: DOWNLOAD CSV
+// BUTTON: DOWNLOAD CSV (Simple version)
 // ========================================
 
 document.getElementById('csvBtn').onclick = function(){

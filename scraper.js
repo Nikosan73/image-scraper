@@ -1,7 +1,7 @@
 (function(){
 
 // VERSION
-var VERSION = '2.0.0';
+var VERSION = '2.0.1';
 
 var HANDLERS={
   allsop:{
@@ -170,6 +170,46 @@ var HANDLERS={
   }
 };
 
+function extractPDFs(){
+  var pdfs=[];
+  var seen={};
+  
+  document.querySelectorAll('a[href$=".pdf"], a[href*=".pdf?"]').forEach(function(a){
+    var href=a.href;
+    if(!seen[href]){
+      seen[href]=true;
+      pdfs.push({
+        url: href,
+        text: a.textContent.trim() || 'PDF Document'
+      });
+    }
+  });
+  
+  document.querySelectorAll('embed[type="application/pdf"], object[type="application/pdf"]').forEach(function(el){
+    var src=el.src || el.data;
+    if(src && !seen[src]){
+      seen[src]=true;
+      pdfs.push({
+        url: src,
+        text: 'Embedded PDF'
+      });
+    }
+  });
+  
+  document.querySelectorAll('iframe[src*=".pdf"]').forEach(function(iframe){
+    var src=iframe.src;
+    if(src && !seen[src]){
+      seen[src]=true;
+      pdfs.push({
+        url: src,
+        text: 'PDF (iframe)'
+      });
+    }
+  });
+  
+  return pdfs;
+}
+
 var handler=null;
 for(var key in HANDLERS){
   if(HANDLERS[key].detect()){
@@ -180,6 +220,7 @@ for(var key in HANDLERS){
 
 var urls=handler.extract();
 urls=urls.filter(function(url){return !url.match(/\.pdf(\?|#|$)/i);});
+var pdfs=extractPDFs();
 var siteName=handler.name;
 var propertyTitle=document.title||'Property';
 var propertyUrl=window.location.href;
@@ -194,6 +235,7 @@ div.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%
 div.innerHTML='<h2 style="margin:0 0 15px 0;color:#333;">Image Scraper</h2>'+
   '<p style="margin:5px 0;"><strong>Site:</strong> '+siteName+'</p>'+
   '<p style="margin:5px 0;"><strong>Images Found:</strong> '+urls.length+'</p>'+
+  '<p style="margin:5px 0;"><strong>PDFs Found:</strong> '+pdfs.length+'</p>'+
   '<p style="margin:5px 0;color:#666;font-size:12px;">Version '+VERSION+'</p>'+
   '<div style="margin-top:15px;">'+
   '<button id="htmlBtn" style="padding:10px 15px;margin:5px;cursor:pointer;background:#4CAF50;color:white;border:none;border-radius:4px;font-size:14px;">📄 Download HTML Viewer</button>'+
@@ -284,6 +326,17 @@ document.getElementById('htmlBtn').onclick=function(){
     output+='<p><strong>Property:</strong> '+propertyTitle.replace(/</g,'&lt;')+'</p>';
     output+='<p><strong>Source:</strong> '+siteName+'</p>';
     output+='<p><strong>Images:</strong> <span id="imgCount">'+imageDimensions.length+'</span></p></div>';
+    
+    if(pdfs.length>0){
+      output+='<div class="controls" style="background:#e3f2fd"><h3 style="margin:0 0 10px 0">📄 PDFs Found ('+pdfs.length+')</h3>';
+      for(var p=0;p<pdfs.length;p++){
+        var pdfText=pdfs[p].text.replace(/</g,'&lt;').replace(/"/g,'&quot;');
+        var pdfUrl=pdfs[p].url.replace(/"/g,'&quot;');
+        output+='<div style="margin:5px 0"><input type="checkbox" id="pdf'+p+'" data-url="'+pdfUrl+'"> ';
+        output+='<label for="pdf'+p+'">'+pdfText+'</label></div>';
+      }
+      output+='</div>';
+    }
     
     output+='<div class="filters"><h3>Filter by Megapixels</h3>';
     output+='<div class="filter-group"><label>Min MP:</label><input type="number" step="0.1" id="minMP" value="0"></div>';
@@ -397,18 +450,25 @@ document.getElementById('htmlBtn').onclick=function(){
     output+='document.querySelectorAll(".card:not(.deleted) input:checked").forEach(function(cb){';
     output+='selected.push(parseInt(cb.closest(".card").dataset.idx));';
     output+='});';
-    output+='if(selected.length==0){alert("Please select images");return;}';
+    output+='var selectedPDFs=[];';
+    output+='document.querySelectorAll("[id^=pdf]:checked").forEach(function(cb){';
+    output+='selectedPDFs.push({url:cb.dataset.url,text:cb.nextElementSibling.textContent});';
+    output+='});';
+    output+='if(selected.length==0&&selectedPDFs.length==0){alert("Please select images or PDFs");return;}';
     output+='selected.sort(function(a,b){return a-b;});';
-    output+='var csv="Property,URL,Image Number,Image URL,Megapixels,Tag\\n";';
+    output+='var csv="Property,URL,Type,Number,Resource URL,Megapixels,Tag\\n";';
     output+='selected.forEach(function(idx,num){';
     output+='var img=imageData[idx];';
     output+='var tag=tags[idx]||"";';
-    output+='csv+="\\""+propTitle+"\\",\\""+propUrl+"\\","+(num+1)+",\\""+img.url+"\\","+img.mp+",\\""+tag+"\\"\\n";';
+    output+='csv+="\\""+propTitle+"\\",\\""+propUrl+"\\",Image,"+(num+1)+",\\""+img.url+"\\","+img.mp+",\\""+tag+"\\"\\n";';
+    output+='});';
+    output+='selectedPDFs.forEach(function(pdf,num){';
+    output+='csv+="\\""+propTitle+"\\",\\""+propUrl+"\\",PDF,"+(num+1)+",\\""+pdf.url+"\\",N/A,N/A\\n";';
     output+='});';
     output+='var blob=new Blob([csv],{type:"text/csv"});';
     output+='var link=document.createElement("a");';
     output+='link.href=URL.createObjectURL(blob);';
-    output+='link.download="images_"+Date.now()+".csv";';
+    output+='link.download="images_pdfs_"+Date.now()+".csv";';
     output+='link.click();';
     output+='}';
     

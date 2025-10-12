@@ -261,7 +261,17 @@ document.getElementById('htmlBtn').onclick=async function(){
   for(var i=0;i<urls.length;i++){
     await new Promise(function(resolve){
       var img=new Image();
+      var timeout=setTimeout(function(){
+        imageDimensions.push({
+          url:urls[i],
+          width:0,
+          height:0,
+          megapixels:0
+        });
+        resolve();
+      },3000);
       img.onload=function(){
+        clearTimeout(timeout);
         imageDimensions.push({
           url:urls[i],
           width:this.naturalWidth,
@@ -271,6 +281,7 @@ document.getElementById('htmlBtn').onclick=async function(){
         resolve();
       };
       img.onerror=function(){
+        clearTimeout(timeout);
         imageDimensions.push({
           url:urls[i],
           width:0,

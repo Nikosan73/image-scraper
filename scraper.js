@@ -1,7 +1,7 @@
 (function(){
 
 // VERSION
-var VERSION = '1.0.0';
+var VERSION = '1.0.2';
 
 var HANDLERS={
   allsop:{
@@ -35,27 +35,61 @@ var HANDLERS={
       return u;
     }
   },
+  propertylink:{
+    name:'PropertyLink/Estates Gazette',
+    detect:function(){
+      return window.location.hostname.includes('estatesgazette.com') || 
+             window.location.hostname.includes('propertylink');
+    },
+    extract:function(){
+      var u=[];
+      document.querySelectorAll('img[srcset]').forEach(function(img){
+        var srcset=img.srcset;
+        if(srcset && srcset.includes('propertylinkassets')){
+          // Extract all URLs with their widths
+          var matches=srcset.match(/https:\/\/[^\s]+\s+(\d+)w/g);
+          if(matches){
+            var maxWidth=0;
+            var maxUrl='';
+            matches.forEach(function(match){
+              var parts=match.match(/(https:\/\/[^\s]+)\s+(\d+)w/);
+              if(parts){
+                var url=parts[1];
+                var width=parseInt(parts[2]);
+                if(width>maxWidth){
+                  maxWidth=width;
+                  maxUrl=url;
+                }
+              }
+            });
+            if(maxUrl && !u.includes(maxUrl)){
+              u.push(maxUrl);
+            }
+          }
+        }
+      });
+      return u;
+    }
+  },
   email:{
     name:'Email (HTML)',
     detect:function(){
       return!!document.querySelector('img[src^="data:image"]')||
         document.body.innerHTML.includes('cid:')||
         !!document.querySelector('meta[name="Generator"][content*="Microsoft"]')||
-        document.querySelectorAll('a[href^="mailto:"]').length>2;
+        !!document.querySelector('meta[name="Generator"][content*="Outlook"]');
     },
     extract:function(){
       var u=[];
       document.querySelectorAll('img').forEach(function(img){
-        if(img.src&&img.src.startsWith('data:image/')){
-          var m=img.src.match(/^data:image\/(jpeg|jpg|png|gif|webp);base64,(.+)$/);
-          if(m&&m[2].length>100)u.push(img.src);
-        }else if(img.src&&img.src.startsWith('http')){
-          var w=img.naturalWidth||img.width||0;
-          var h=img.naturalHeight||img.height||0;
-          if(w>50&&h>50&&!u.includes(img.src))u.push(img.src);
+        var src=img.src||'';
+        if(src.startsWith('data:image')){
+          u.push(src);
+        }else if(src.startsWith('http')){
+          u.push(src);
         }
       });
-      return u.filter(function(url){return!url.includes('spacer')&&!url.includes('tracking')});
+      return u;
     }
   },
   generic:{
@@ -63,269 +97,233 @@ var HANDLERS={
     detect:function(){return true},
     extract:function(){
       var u=[];
-      document.querySelectorAll('img').forEach(function(img){
-        if(img.src&&img.src.startsWith('http')&&img.naturalWidth>50&&!u.includes(img.src))u.push(img.src);
+      var seen={};
+      
+      // Handle srcset images (like Estates Gazette)
+      document.querySelectorAll('img[srcset]').forEach(function(img){
+        var srcset=img.srcset;
+        if(srcset){
+          var matches=srcset.match(/https:\/\/[^\s]+\s+(\d+)w/g);
+          if(matches){
+            var maxWidth=0;
+            var maxUrl='';
+            matches.forEach(function(match){
+              var parts=match.match(/(https:\/\/[^\s]+)\s+(\d+)w/);
+              if(parts){
+                var url=parts[1];
+                var width=parseInt(parts[2]);
+                if(width>maxWidth && !url.match(/tiny|small|thumb/i)){
+                  maxWidth=width;
+                  maxUrl=url;
+                }
+              }
+            });
+            if(maxUrl && !seen[maxUrl]){
+              seen[maxUrl]=true;
+              u.push(maxUrl);
+            }
+          }
+        }
       });
-      document.querySelectorAll('[style*="background-image"]').forEach(function(el){
-        var style=el.getAttribute('style')||'';
-        var matches=style.match(/url\(['"&quot;]?([^'"&quot;)]+)['"&quot;]?\)/g);
+      
+      // Regular img tags
+      document.querySelectorAll('img').forEach(function(img){
+        if(img.src && img.src.startsWith('http') && img.naturalWidth>200 && !seen[img.src]){
+          if(!img.src.match(/logo|icon|sprite|avatar|thumb/i)){
+            seen[img.src]=true;
+            u.push(img.src);
+          }
+        }
+      });
+      
+      // Picture source tags
+      document.querySelectorAll('picture source').forEach(function(src){
+        var srcset=src.srcset||'';
+        var matches=srcset.match(/https:\/\/[^\s,]+/g);
         if(matches){
-          matches.forEach(function(match){
-            var url=match.replace(/url\(['"&quot;]?/,'').replace(/['"&quot;)]/g,'').trim();
-            if(url.startsWith('/'))url=window.location.origin+url;
-            else if(!url.startsWith('http')&&!url.startsWith('data:'))url=window.location.origin+'/'+url;
-            if(url.startsWith('http')&&!u.includes(url))u.push(url);
+          matches.forEach(function(url){
+            if(!seen[url]){
+              seen[url]=true;
+              u.push(url);
+            }
           });
         }
       });
-      return u.filter(function(url){
-        return!url.includes('logo')&&!url.includes('icon')&&!url.includes('sprite')&&
-          !url.includes('tiny')&&!url.includes('small')&&!url.match(/\.(svg|gif)$/i);
+      
+      // Background images
+      document.querySelectorAll('[style*="background-image"]').forEach(function(el){
+        var style=el.getAttribute('style')||'';
+        var matches=style.match(/url\(['""]?([^'"")]+)['""]?\)/g);
+        if(matches){
+          matches.forEach(function(match){
+            var url=match.replace(/url\(['""]?/,'').replace(/['"")]/g,'').trim();
+            if(url.startsWith('/')){
+              url=window.location.origin+url;
+            }else if(!url.startsWith('http')){
+              url=window.location.origin+'/'+url;
+            }
+            if(!seen[url] && !url.match(/logo|icon|sprite/i)){
+              seen[url]=true;
+              u.push(url);
+            }
+          });
+        }
       });
+      
+      return u;
     }
   }
 };
 
-var detected='generic';
-var siteName='Generic';
+// Extract PDFs
+function extractPDFs(){
+  var pdfs=[];
+  var seen={};
+  
+  // Links to PDFs
+  document.querySelectorAll('a[href$=".pdf"], a[href*=".pdf?"]').forEach(function(a){
+    var href=a.href;
+    if(!seen[href]){
+      seen[href]=true;
+      pdfs.push({
+        url: href,
+        text: a.textContent.trim() || 'PDF Document'
+      });
+    }
+  });
+  
+  // Embedded PDFs
+  document.querySelectorAll('embed[type="application/pdf"], object[type="application/pdf"]').forEach(function(el){
+    var src=el.src || el.data;
+    if(src && !seen[src]){
+      seen[src]=true;
+      pdfs.push({
+        url: src,
+        text: 'Embedded PDF'
+      });
+    }
+  });
+  
+  // iframes with PDFs
+  document.querySelectorAll('iframe[src*=".pdf"]').forEach(function(iframe){
+    var src=iframe.src;
+    if(src && !seen[src]){
+      seen[src]=true;
+      pdfs.push({
+        url: src,
+        text: 'PDF (iframe)'
+      });
+    }
+  });
+  
+  return pdfs;
+}
+
+// Detect site and extract
+var handler=null;
 for(var key in HANDLERS){
-  if(key!=='generic'&&HANDLERS[key].detect()){
-    detected=key;
-    siteName=HANDLERS[key].name;
+  if(HANDLERS[key].detect()){
+    handler=HANDLERS[key];
     break;
   }
 }
 
-var urls=HANDLERS[detected].extract();
-if(urls.length===0){alert('No images found!');return}
+var urls=handler.extract();
+var pdfs=extractPDFs();
+var siteName=handler.name;
+var propertyTitle=document.title||'Property';
+var propertyUrl=window.location.href;
 
+if(urls.length===0 && pdfs.length===0){
+  alert('No images or PDFs found on this page!');
+  return;
+}
+
+// Create popup dialog
 var div=document.createElement('div');
-div.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;border:2px solid #333;padding:30px;width:500px;max-height:80vh;overflow-y:auto;z-index:999999;box-shadow:0 4px 20px rgba(0,0,0,0.5);font-family:Arial;border-radius:8px;';
-div.innerHTML='<h2 style="margin-top:0;">Found '+urls.length+' Images</h2>'+
-  '<p style="color:#666;margin-bottom:10px;">Detected: <strong>'+siteName+'</strong> scraper</p>'+
-  '<p style="color:#999;font-size:12px;margin-bottom:20px;">Version '+VERSION+'</p>'+
-  '<button id="htmlBtn" style="width:100%;padding:15px;margin:10px 0;background:#007bff;color:white;border:none;border-radius:4px;cursor:pointer;font-size:16px;font-weight:bold;">📄 Download HTML Viewer</button>'+
-  '<button id="closeBtn" style="width:100%;padding:15px;margin:10px 0;background:#dc3545;color:white;border:none;border-radius:4px;cursor:pointer;font-size:16px;font-weight:bold;">❌ Close</button>';
+div.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;border:3px solid #333;padding:20px;z-index:999999;box-shadow:0 4px 20px rgba(0,0,0,0.3);font-family:Arial,sans-serif;min-width:400px;max-width:500px;';
+div.innerHTML='<h2 style="margin:0 0 15px 0;color:#333;">Image & PDF Scraper</h2>'+
+  '<p style="margin:5px 0;"><strong>Site:</strong> '+siteName+'</p>'+
+  '<p style="margin:5px 0;"><strong>Images Found:</strong> '+urls.length+'</p>'+
+  '<p style="margin:5px 0;"><strong>PDFs Found:</strong> '+pdfs.length+'</p>'+
+  '<p style="margin:5px 0;color:#666;font-size:12px;">Version '+VERSION+'</p>'+
+  '<div style="margin-top:15px;">'+
+  '<button id="htmlBtn" style="padding:10px 15px;margin:5px;cursor:pointer;background:#4CAF50;color:white;border:none;border-radius:4px;font-size:14px;">📄 Download HTML Viewer</button>'+
+  '<button id="closeBtn" style="padding:10px 15px;margin:5px;cursor:pointer;background:#f44336;color:white;border:none;border-radius:4px;font-size:14px;">✖ Close</button>'+
+  '</div>';
 document.body.appendChild(div);
 
-document.getElementById('closeBtn').onclick=function(){
-  document.body.removeChild(div);
-};
-
-document.getElementById('htmlBtn').onclick=function(){
-  var title=document.title.replace(/"/g,'').replace(/\\/g,'').replace(/\n/g,' ');
-  var pageUrl=window.location.href;
-  var host=window.location.hostname.replace('www.','')||'local';
+document.getElementById('htmlBtn').onclick=async function(){
+  this.disabled=true;
+  this.textContent='Calculating dimensions...';
   
-  var htmlContent=buildHTML(urls,title,pageUrl,host,siteName);
+  var imageDimensions=[];
+  for(var i=0;i<urls.length;i++){
+    await new Promise(function(resolve){
+      var img=new Image();
+      img.onload=function(){
+        imageDimensions.push({
+          url:urls[i],
+          width:this.naturalWidth,
+          height:this.naturalHeight,
+          megapixels:(this.naturalWidth*this.naturalHeight/1000000).toFixed(2)
+        });
+        resolve();
+      };
+      img.onerror=function(){
+        imageDimensions.push({
+          url:urls[i],
+          width:0,
+          height:0,
+          megapixels:0
+        });
+        resolve();
+      };
+      img.src=urls[i];
+    });
+  }
   
-  var blob=new Blob([htmlContent],{type:'text/html'});
+  var html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Images & PDFs - '+propertyTitle.replace(/</g,'&lt;')+'</title><style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:20px;background:#f5f5f5}.header{background:white;padding:20px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}.header h1{margin:0 0 10px 0;color:#333}.header p{margin:5px 0;color:#666}.filters{background:white;padding:15px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}.filter-group{display:inline-block;margin:10px 15px 10px 0}.filter-group label{display:block;margin-bottom:5px;font-weight:bold;color:#555}.filter-group input{padding:5px;width:100px;border:1px solid #ddd;border-radius:4px}.controls{background:white;padding:15px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}button{padding:10px 20px;margin:5px;cursor:pointer;border:none;border-radius:4px;font-size:14px;font-weight:bold}button:hover{opacity:0.9}button:disabled{opacity:0.5;cursor:not-allowed}.btn-primary{background:#4CAF50;color:white}.btn-secondary{background:#2196F3;color:white}.btn-danger{background:#f44336;color:white}.section{background:white;padding:20px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}.section h2{margin:0 0 15px 0;color:#333;border-bottom:2px solid #4CAF50;padding-bottom:10px}.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:15px}.image-card{border:2px solid #ddd;border-radius:8px;overflow:hidden;background:white;transition:transform 0.2s}.image-card:hover{transform:translateY(-5px);box-shadow:0 4px 8px rgba(0,0,0,0.2)}.image-card.selected{border-color:#4CAF50;box-shadow:0 0 10px rgba(76,175,80,0.5)}.image-wrapper{position:relative;padding-top:75%;background:#f9f9f9}.image-wrapper img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain}.image-info{padding:10px;font-size:12px;color:#666}.image-info div{margin:3px 0}.checkbox-wrapper{padding:10px;text-align:center}.checkbox-wrapper input{width:20px;height:20px;cursor:pointer}.tag-buttons{padding:5px;display:flex;flex-wrap:wrap;gap:5px;justify-content:center}.tag-btn{padding:5px 10px;font-size:11px;border:1px solid #ddd;background:white;color:#333;border-radius:3px;cursor:pointer}.tag-btn:hover{background:#f0f0f0}.tag-btn.active{background:#4CAF50;color:white;border-color:#4CAF50}.download-link{display:block;text-align:center;padding:8px;background:#2196F3;color:white;text-decoration:none;border-radius:4px;margin-top:5px}.download-link:hover{background:#1976D2}.pdf-list{list-style:none;padding:0}.pdf-item{padding:15px;margin:10px 0;background:#f9f9f9;border-left:4px solid #2196F3;border-radius:4px}.pdf-item a{color:#2196F3;text-decoration:none;font-weight:bold}.pdf-item a:hover{text-decoration:underline}</style></head><body>'+
+  '<div class="header"><h1>Images & PDFs Viewer</h1><p><strong>Property:</strong> '+propertyTitle.replace(/</g,'&lt;')+'</p><p><strong>Source:</strong> '+siteName+'</p><p><strong>URL:</strong> <a href="'+propertyUrl+'" target="_blank">'+propertyUrl+'</a></p><p><strong>Images:</strong> '+imageDimensions.length+' | <strong>PDFs:</strong> '+pdfs.length+'</p></div>'+
+  '<div class="filters"><h3 style="margin:0 0 10px 0">Filters</h3><div class="filter-group"><label>Min Width (px):</label><input type="number" id="minWidth" value="0"></div><div class="filter-group"><label>Max Width (px):</label><input type="number" id="maxWidth" value="99999"></div><div class="filter-group"><label>Min Height (px):</label><input type="number" id="minHeight" value="0"></div><div class="filter-group"><label>Max Height (px):</label><input type="number" id="maxHeight" value="99999"></div><div class="filter-group"><label>Min Megapixels:</label><input type="number" step="0.1" id="minMP" value="0"></div><div class="filter-group"><label>Max Megapixels:</label><input type="number" step="0.1" id="maxMP" value="999"></div><br><button class="btn-primary" onclick="applyFilters()">Apply Filters</button><button class="btn-secondary" onclick="resetFilters()">Reset Filters</button></div>'+
+  '<div class="controls"><button class="btn-secondary" onclick="selectAll()">✓ Select All</button><button class="btn-secondary" onclick="deselectAll()">✗ Deselect All</button><button class="btn-danger" onclick="deleteSelected()">🗑 Delete Selected</button><button class="btn-primary" onclick="downloadCSV()">📊 Export CSV</button></div>';
+  
+  if(pdfs.length>0){
+    html+='<div class="section"><h2>📄 PDF Documents ('+pdfs.length+')</h2><ul class="pdf-list">';
+    pdfs.forEach(function(pdf,idx){
+      html+='<li class="pdf-item"><a href="'+pdf.url+'" target="_blank" download>📥 '+(pdf.text||'PDF '+(idx+1))+'</a><br><small style="color:#666;">'+pdf.url+'</small></li>';
+    });
+    html+='</ul></div>';
+  }
+  
+  html+='<div class="section"><h2>🖼 Images (<span id="imageCount">'+imageDimensions.length+'</span>)</h2><div class="gallery" id="gallery">';
+  
+  imageDimensions.forEach(function(item,i){
+    html+='<div class="image-card" data-width="'+item.width+'" data-height="'+item.height+'" data-mp="'+item.megapixels+'">'+
+      '<div class="checkbox-wrapper"><input type="checkbox" class="img-checkbox" data-url="'+item.url+'" data-index="'+i+'"></div>'+
+      '<div class="image-wrapper"><img src="'+item.url+'" alt="Image '+(i+1)+'" loading="lazy"></div>'+
+      '<div class="image-info"><div><strong>Dimensions:</strong> '+item.width+' × '+item.height+'</div><div><strong>Megapixels:</strong> '+item.megapixels+' MP</div></div>'+
+      '<div class="tag-buttons"><button class="tag-btn" onclick="toggleTag(this,\'Primary\')">Primary</button><button class="tag-btn" onclick="toggleTag(this,\'Alt1\')">Alt 1</button><button class="tag-btn" onclick="toggleTag(this,\'Alt2\')">Alt 2</button><button class="tag-btn" onclick="toggleTag(this,\'ProMap\')">ProMap</button></div>'+
+      '<a href="'+item.url+'" download="Image_'+(i+1)+'.jpg" class="download-link">⬇️ Download</a></div>';
+  });
+  
+  html+='</div></div><script>function applyFilters(){var minW=parseInt(document.getElementById("minWidth").value)||0;var maxW=parseInt(document.getElementById("maxWidth").value)||99999;var minH=parseInt(document.getElementById("minHeight").value)||0;var maxH=parseInt(document.getElementById("maxHeight").value)||99999;var minMP=parseFloat(document.getElementById("minMP").value)||0;var maxMP=parseFloat(document.getElementById("maxMP").value)||999;var cards=document.querySelectorAll(".image-card");var count=0;cards.forEach(function(card){var w=parseInt(card.dataset.width);var h=parseInt(card.dataset.height);var mp=parseFloat(card.dataset.mp);if(w>=minW&&w<=maxW&&h>=minH&&h<=maxH&&mp>=minMP&&mp<=maxMP){card.style.display="block";count++;}else{card.style.display="none";}});document.getElementById("imageCount").textContent=count;}function resetFilters(){document.getElementById("minWidth").value=0;document.getElementById("maxWidth").value=99999;document.getElementById("minHeight").value=0;document.getElementById("maxHeight").value=99999;document.getElementById("minMP").value=0;document.getElementById("maxMP").value=999;applyFilters();}function selectAll(){document.querySelectorAll(".image-card").forEach(function(card){if(card.style.display!=="none"){card.querySelector(".img-checkbox").checked=true;card.classList.add("selected");}});}function deselectAll(){document.querySelectorAll(".img-checkbox").forEach(function(cb){cb.checked=false;cb.closest(".image-card").classList.remove("selected");});}function deleteSelected(){if(!confirm("Delete selected images?"))return;document.querySelectorAll(".img-checkbox:checked").forEach(function(cb){cb.closest(".image-card").remove();});applyFilters();}function toggleTag(btn,tag){btn.classList.toggle("active");var card=btn.closest(".image-card");if(!card.dataset.tags)card.dataset.tags="";var tags=card.dataset.tags.split(",").filter(function(t){return t});if(btn.classList.contains("active")){if(!tags.includes(tag))tags.push(tag);}else{tags=tags.filter(function(t){return t!==tag});}card.dataset.tags=tags.join(",");}function downloadCSV(){var rows=[["Property","URL","Image Number","Image URL","Width","Height","Megapixels","Tags"]];document.querySelectorAll(".image-card").forEach(function(card,i){if(card.style.display!=="none"){var cb=card.querySelector(".img-checkbox");var url=cb.dataset.url;var w=card.dataset.width;var h=card.dataset.height;var mp=card.dataset.mp;var tags=card.dataset.tags||"";rows.push(["'+propertyTitle.replace(/"/g,'\\"')+'","'+propertyUrl+'","'+(i+1)+'","'+url+'","'+w+'","'+h+'","'+mp+'","'+tags+'"]);}});var csv=rows.map(function(r){return r.map(function(c){return \'"\'+String(c).replace(/"/g,\'""\')+\'"\';}).join(",");}).join("\\n");var blob=new Blob([csv],{type:"text/csv"});var url=URL.createObjectURL(blob);var a=document.createElement("a");a.href=url;a.download="images_"+Date.now()+".csv";a.click();URL.revokeObjectURL(url);}document.querySelectorAll(".img-checkbox").forEach(function(cb){cb.addEventListener("change",function(){this.closest(".image-card").classList.toggle("selected",this.checked);});});<\/script></body></html>';
+  
+  var blob=new Blob([html],{type:'text/html'});
   var blobUrl=URL.createObjectURL(blob);
   var a=document.createElement('a');
   a.href=blobUrl;
-  a.download='images_'+Date.now()+'.html';
+  a.download='images_pdfs_'+Date.now()+'.html';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(blobUrl);
-  alert('HTML viewer downloaded!');
+  alert('HTML file downloaded! Open it to view images and PDFs.');
+  document.body.removeChild(div);
 };
 
-function buildHTML(imageUrls,pageTitle,pageUrl,hostname,scraper){
-  var html=[];
-  html.push('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Images</title>');
-  html.push('<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial;padding:20px;background:#f5f5f5}');
-  html.push('h1{margin-bottom:10px}.subtitle{color:#666;font-size:14px;margin-bottom:5px}');
-  html.push('.version{color:#999;font-size:12px;margin-bottom:20px}');
-  html.push('.filters{background:#f8f9fa;padding:20px;margin:20px 0;border-radius:4px}');
-  html.push('.filter-row{display:flex;gap:15px;margin:10px 0;flex-wrap:wrap;align-items:center}');
-  html.push('.filter-row label{font-weight:bold;color:#555}');
-  html.push('.filter-row input{padding:8px;border:1px solid #ddd;border-radius:4px;width:120px}');
-  html.push('.filter-row button{padding:8px 16px;background:#007bff;color:white;border:none;border-radius:4px;cursor:pointer}');
-  html.push('.filter-row button.reset{background:#6c757d}');
-  html.push('.selection-controls{background:#fff3cd;padding:15px;margin:20px 0;border-radius:4px;display:flex;gap:10px;flex-wrap:wrap}');
-  html.push('.selection-controls button{padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-weight:bold}');
-  html.push('.select-all{background:#28a745;color:white}.select-none{background:#dc3545;color:white}');
-  html.push('.delete-selected{background:#fd7e14;color:white}');
-  html.push('.button-group{margin:20px 0;display:flex;gap:10px}');
-  html.push('.csv-btn{padding:12px 24px;background:#17a2b8;color:white;border:none;border-radius:4px;cursor:pointer;flex:1}');
-  html.push('.image-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px;margin-top:20px}');
-  html.push('.image-card{background:white;padding:15px;border-radius:4px;position:relative}');
-  html.push('.image-card.hidden{display:none}.image-card.deleted{display:none}.image-card.selected{border:3px solid #28a745}');
-  html.push('.checkbox-wrapper{position:absolute;top:10px;right:10px}.checkbox-wrapper input{width:24px;height:24px}');
-  html.push('.tag-selector{margin:10px 0;padding:8px;background:#f8f9fa;border-radius:4px}.tag-selector select{width:100%;padding:6px}');
-  html.push('.tag-badge{display:inline-block;padding:4px 8px;background:#6f42c1;color:white;border-radius:3px;font-size:11px;margin:5px 0}');
-  html.push('.dimensions{color:#666;font-size:13px;margin:5px 0;font-weight:bold}');
-  html.push('.file-size{color:#888;font-size:12px;margin:5px 0}');
-  html.push('.image-card img{width:100%;height:auto;border:1px solid #ddd;margin:10px 0}');
-  html.push('.stats{background:#e7f3ff;padding:15px;margin:20px 0;border-radius:4px;display:none}');
-  html.push('.stats div{margin:5px 0}</style></head><body>');
-  
-  html.push('<h1>Found '+imageUrls.length+' Images</h1>');
-  html.push('<div class="subtitle">From: '+hostname+' ('+scraper+')</div>');
-  html.push('<div class="version">Scraper Version '+VERSION+'</div>');
-  html.push('<div class="stats" id="stats"><strong>📐 Image Statistics:</strong><div id="statsContent"></div></div>');
-  
-  html.push('<div class="filters"><h3>🔍 Filter Images</h3>');
-  html.push('<div class="filter-row">');
-  html.push('<label>Min Width:</label><input type="number" id="minWidth" placeholder="1000">');
-  html.push('<label>Max Width:</label><input type="number" id="maxWidth" placeholder="5000">');
-  html.push('</div><div class="filter-row">');
-  html.push('<label>Min Height:</label><input type="number" id="minHeight" placeholder="800">');
-  html.push('<label>Max Height:</label><input type="number" id="maxHeight" placeholder="5000">');
-  html.push('</div><div class="filter-row">');
-  html.push('<label>Min Size (KB):</label><input type="number" id="minSize" placeholder="100">');
-  html.push('<label>Max Size (KB):</label><input type="number" id="maxSize" placeholder="5000">');
-  html.push('</div><div class="filter-row">');
-  html.push('<button onclick="applyFilters()">Apply Filters</button>');
-  html.push('<button class="reset" onclick="resetFilters()">Reset</button>');
-  html.push('</div><div id="filterStatus" style="margin-top:10px;color:#666"></div></div>');
-  
-  html.push('<div class="selection-controls">');
-  html.push('<button class="select-all" onclick="selectAll()">✓ Select All Visible</button>');
-  html.push('<button class="select-none" onclick="selectNone()">✗ Deselect All</button>');
-  html.push('<button class="delete-selected" onclick="deleteSelected()">🗑️ Delete Selected</button>');
-  html.push('<span style="flex:1"></span>');
-  html.push('<strong id="selectedCount">0 selected</strong></div>');
-  
-  html.push('<div class="button-group">');
-  html.push('<button class="csv-btn" onclick="exportCSV()">📊 Export Selected to CSV</button></div>');
-  
-  html.push('<div class="image-gallery">');
-  for(var i=0;i<imageUrls.length;i++){
-    html.push('<div class="image-card" id="c'+i+'" data-index="'+i+'">');
-    html.push('<div class="checkbox-wrapper"><input type="checkbox" id="ch'+i+'" onchange="updateSelection()"></div>');
-    html.push('<h3>Image '+(i+1)+'</h3>');
-    html.push('<div id="tb'+i+'" class="tag-badge" style="display:none"></div>');
-    html.push('<div class="dimensions" id="dim'+i+'">📐 Loading...</div>');
-    html.push('<div class="file-size" id="size'+i+'">💾 Calculating...</div>');
-    html.push('<div class="tag-selector"><select id="ts'+i+'" onchange="tagChange('+i+')">');
-    html.push('<option value="">-- Tag --</option>');
-    html.push('<option value="Primary Image">Primary Image</option>');
-    html.push('<option value="Alternate Image 1">Alternate Image 1</option>');
-    html.push('<option value="Alternate Image 2">Alternate Image 2</option>');
-    html.push('<option value="ProMap">ProMap</option>');
-    html.push('</select></div>');
-    html.push('<img src="'+imageUrls[i]+'" id="im'+i+'">');
-    html.push('<a href="'+imageUrls[i]+'" download="Image_'+(i+1)+'.jpg" style="display:inline-block;margin-top:10px;padding:8px 16px;background:#007bff;color:white;text-decoration:none;border-radius:4px">⬇️ Download</a>');
-    html.push('</div>');
-  }
-  html.push('</div>');
-  
-  html.push('<script>');
-  html.push('var imgUrls='+JSON.stringify(imageUrls)+';');
-  html.push('var propTitle='+JSON.stringify(pageTitle)+';');
-  html.push('var propUrl='+JSON.stringify(pageUrl)+';');
-  html.push('var tags={};var tagMap={};var deleted=new Set();');
-  html.push('var imageDims=[];var imageSizes=[];');
-  html.push('var loadedCount=0;var allLoaded=false;');
-  
-  html.push('window.onload=function(){');
-  html.push('var imgs=document.querySelectorAll(".image-gallery img");');
-  html.push('var widths=[],heights=[];');
-  html.push('imgs.forEach(function(img,i){');
-  html.push('var updateDims=function(){');
-  html.push('var w=img.naturalWidth,h=img.naturalHeight;');
-  html.push('if(w>0&&h>0){');
-  html.push('var mp=(w*h/1000000).toFixed(1);');
-  html.push('imageDims[i]={width:w,height:h,megapixels:parseFloat(mp)};');
-  html.push('widths.push(w);heights.push(h);');
-  html.push('document.getElementById("dim"+i).textContent="📐 "+w+" × "+h+" px ("+mp+" MP)";');
-  html.push('document.getElementById("c"+i).setAttribute("data-width",w);');
-  html.push('document.getElementById("c"+i).setAttribute("data-height",h);');
-  html.push('document.getElementById("c"+i).setAttribute("data-mp",mp);');
-  html.push('fetch(imgUrls[i]).then(function(r){return r.blob()}).then(function(b){');
-  html.push('var kb=(b.size/1024).toFixed(1);');
-  html.push('imageSizes[i]=parseFloat(kb);');
-  html.push('document.getElementById("size"+i).textContent="💾 "+kb+" KB";');
-  html.push('document.getElementById("c"+i).setAttribute("data-size",kb);');
-  html.push('}).catch(function(){document.getElementById("size"+i).textContent="💾 Size unavailable"});');
-  html.push('}loadedCount++;');
-  html.push('if(loadedCount===imgs.length){');
-  html.push('allLoaded=true;');
-  html.push('if(widths.length>0){');
-  html.push('var avgW=Math.round(widths.reduce(function(a,b){return a+b},0)/widths.length);');
-  html.push('var avgH=Math.round(heights.reduce(function(a,b){return a+b},0)/heights.length);');
-  html.push('var maxW=Math.max.apply(null,widths);');
-  html.push('var maxH=Math.max.apply(null,heights);');
-  html.push('document.getElementById("stats").style.display="block";');
-  html.push('document.getElementById("statsContent").innerHTML="<div>Valid Images: "+imgs.length+"</div><div>Average: "+avgW+" × "+avgH+" px</div><div>Largest: "+maxW+" × "+maxH+" px</div>"');
-  html.push('}}};');
-  html.push('img.onload=updateDims;img.onerror=function(){loadedCount++};');
-  html.push('if(img.complete)updateDims()});};');
-  
-  html.push('function tagChange(i){');
-  html.push('var s=document.getElementById("ts"+i);var nt=s.value;var ot=tags[i];');
-  html.push('if(ot){delete tagMap[ot];delete tags[i];document.getElementById("tb"+i).style.display="none"}');
-  html.push('if(nt){if(tagMap[nt]!==undefined){var p=tagMap[nt];delete tags[p];');
-  html.push('document.getElementById("ts"+p).value="";document.getElementById("tb"+p).style.display="none"}');
-  html.push('tags[i]=nt;tagMap[nt]=i;var b=document.getElementById("tb"+i);');
-  html.push('b.textContent=nt;b.style.display="inline-block"}}');
-  
-  html.push('function applyFilters(){');
-  html.push('if(!allLoaded){alert("Please wait for images to load!");return}');
-  html.push('var minW=parseInt(document.getElementById("minWidth").value)||0;');
-  html.push('var maxW=parseInt(document.getElementById("maxWidth").value)||999999;');
-  html.push('var minH=parseInt(document.getElementById("minHeight").value)||0;');
-  html.push('var maxH=parseInt(document.getElementById("maxHeight").value)||999999;');
-  html.push('var minS=parseFloat(document.getElementById("minSize").value)||0;');
-  html.push('var maxS=parseFloat(document.getElementById("maxSize").value)||999999;');
-  html.push('var hiddenCount=0;');
-  html.push('document.querySelectorAll(".image-card:not(.deleted)").forEach(function(c){');
-  html.push('var w=parseInt(c.getAttribute("data-width"))||0;');
-  html.push('var h=parseInt(c.getAttribute("data-height"))||0;');
-  html.push('var s=parseFloat(c.getAttribute("data-size"))||0;');
-  html.push('if(w>=minW&&w<=maxW&&h>=minH&&h<=maxH&&s>=minS&&s<=maxS){c.classList.remove("hidden")}else{c.classList.add("hidden");hiddenCount++}');
-  html.push('});');
-  html.push('var totalVis=imgUrls.length-deleted.size;');
-  html.push('document.getElementById("filterStatus").textContent="Showing "+(totalVis-hiddenCount)+" of "+totalVis+" images";');
-  html.push('updateSelection()}');
-  
-  html.push('function resetFilters(){');
-  html.push('document.getElementById("minWidth").value="";');
-  html.push('document.getElementById("maxWidth").value="";');
-  html.push('document.getElementById("minHeight").value="";');
-  html.push('document.getElementById("maxHeight").value="";');
-  html.push('document.getElementById("minSize").value="";');
-  html.push('document.getElementById("maxSize").value="";');
-  html.push('document.querySelectorAll(".image-card").forEach(function(c){c.classList.remove("hidden")});');
-  html.push('document.getElementById("filterStatus").textContent="";updateSelection()}');
-  
-  html.push('function selectAll(){document.querySelectorAll(".image-card:not(.hidden):not(.deleted) input").forEach(function(cb){');
-  html.push('cb.checked=true;cb.closest(".image-card").classList.add("selected")});updateSelection()}');
-  
-  html.push('function selectNone(){document.querySelectorAll("input[type=checkbox]").forEach(function(cb){');
-  html.push('cb.checked=false;cb.closest(".image-card").classList.remove("selected")});updateSelection()}');
-  
-  html.push('function deleteSelected(){var sel=[];');
-  html.push('document.querySelectorAll("input[type=checkbox]:checked").forEach(function(cb){');
-  html.push('var idx=parseInt(cb.closest(".image-card").dataset.index);sel.push(idx)});');
-  html.push('if(sel.length===0){alert("Select images first");return}');
-  html.push('if(!confirm("Delete "+sel.length+" images?")){return}');
-  html.push('sel.forEach(function(i){deleted.add(i);document.getElementById("c"+i).classList.add("deleted")});updateSelection()}');
-  
-  html.push('function updateSelection(){');
-  html.push('var cnt=document.querySelectorAll(".image-card:not(.hidden):not(.deleted) input:checked").length;');
-  html.push('document.getElementById("selectedCount").textContent=cnt+" selected";');
-  html.push('document.querySelectorAll(".image-card").forEach(function(c){');
-  html.push('if(c.querySelector("input").checked)c.classList.add("selected");else c.classList.remove("selected")})}');
-  
-  html.push('function exportCSV(){var sel=[];');
-  html.push('document.querySelectorAll("input:checked").forEach(function(cb){');
-  html.push('sel.push(parseInt(cb.closest(".image-card").dataset.index))});');
-  html.push('if(sel.length===0){alert("Select images");return}sel.sort(function(a,b){return a-b});');
-  html.push('var rows=["Property,URL,Image Number,Image URL,Width,Height,Megapixels,Size (KB),Tag"];');
-  html.push('sel.forEach(function(oi,ni){var t=tags[oi]||"";');
-  html.push('var d=imageDims[oi]||{width:0,height:0,megapixels:0};');
-  html.push('var s=imageSizes[oi]||0;');
-  html.push('rows.push(JSON.stringify(propTitle)+","+JSON.stringify(propUrl)+","+(ni+1)+","+JSON.stringify(imgUrls[oi])+","+d.width+","+d.height+","+d.megapixels+","+s+","+JSON.stringify(t))});');
-  html.push('var csv=rows.join("\\r\\n");var blob=new Blob([csv],{type:"text/csv"});');
-  html.push('var url=URL.createObjectURL(blob);var a=document.createElement("a");a.href=url;a.download="images.csv";');
-  html.push('document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);alert("CSV exported")}');
-  
-  html.push('</scr'+'ipt></body></html>');
-  
-  return html.join('');
-}
+document.getElementById('closeBtn').onclick=function(){
+  document.body.removeChild(div);
+};
 
 })();

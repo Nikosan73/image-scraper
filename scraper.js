@@ -1,7 +1,7 @@
 (function(){
 
 // VERSION
-var VERSION = '1.0.2';
+var VERSION = '1.0.3';
 
 var HANDLERS={
   allsop:{
@@ -259,11 +259,12 @@ document.getElementById('htmlBtn').onclick=async function(){
   
   var imageDimensions=[];
   for(var i=0;i<urls.length;i++){
+    var currentUrl=urls[i];
     await new Promise(function(resolve){
       var img=new Image();
       var timeout=setTimeout(function(){
         imageDimensions.push({
-          url:urls[i],
+          url:currentUrl,
           width:0,
           height:0,
           megapixels:0
@@ -273,7 +274,7 @@ document.getElementById('htmlBtn').onclick=async function(){
       img.onload=function(){
         clearTimeout(timeout);
         imageDimensions.push({
-          url:urls[i],
+          url:currentUrl,
           width:this.naturalWidth,
           height:this.naturalHeight,
           megapixels:(this.naturalWidth*this.naturalHeight/1000000).toFixed(2)
@@ -283,14 +284,14 @@ document.getElementById('htmlBtn').onclick=async function(){
       img.onerror=function(){
         clearTimeout(timeout);
         imageDimensions.push({
-          url:urls[i],
+          url:currentUrl,
           width:0,
           height:0,
           megapixels:0
         });
         resolve();
       };
-      img.src=urls[i];
+      img.src=currentUrl;
     });
   }
   

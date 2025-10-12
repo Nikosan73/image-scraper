@@ -1,7 +1,7 @@
 (function(){
 
 // VERSION
-var VERSION = '1.0.3';
+var VERSION = '1.0.4';
 
 var HANDLERS={
   allsop:{
@@ -253,25 +253,42 @@ div.innerHTML='<h2 style="margin:0 0 15px 0;color:#333;">Image & PDF Scraper</h2
   '</div>';
 document.body.appendChild(div);
 
-document.getElementById('htmlBtn').onclick=async function(){
-  this.disabled=true;
-  this.textContent='Calculating dimensions...';
+document.getElementById('htmlBtn').onclick=function(){
+  var btn=this;
+  btn.disabled=true;
+  btn.textContent='Processing...';
   
   var imageDimensions=[];
-  for(var i=0;i<urls.length;i++){
-    var currentUrl=urls[i];
-    await new Promise(function(resolve){
-      var img=new Image();
-      var timeout=setTimeout(function(){
+  var processed=0;
+  
+  function processNextImage(index){
+    if(index>=urls.length){
+      generateHTML();
+      return;
+    }
+    
+    btn.textContent='Processing '+(index+1)+'/'+urls.length+'...';
+    
+    var currentUrl=urls[index];
+    var img=new Image();
+    var done=false;
+    
+    var timeout=setTimeout(function(){
+      if(!done){
+        done=true;
         imageDimensions.push({
           url:currentUrl,
           width:0,
           height:0,
           megapixels:0
         });
-        resolve();
-      },3000);
-      img.onload=function(){
+        processNextImage(index+1);
+      }
+    },2000);
+    
+    img.onload=function(){
+      if(!done){
+        done=true;
         clearTimeout(timeout);
         imageDimensions.push({
           url:currentUrl,
@@ -279,9 +296,13 @@ document.getElementById('htmlBtn').onclick=async function(){
           height:this.naturalHeight,
           megapixels:(this.naturalWidth*this.naturalHeight/1000000).toFixed(2)
         });
-        resolve();
-      };
-      img.onerror=function(){
+        processNextImage(index+1);
+      }
+    };
+    
+    img.onerror=function(){
+      if(!done){
+        done=true;
         clearTimeout(timeout);
         imageDimensions.push({
           url:currentUrl,
@@ -289,49 +310,53 @@ document.getElementById('htmlBtn').onclick=async function(){
           height:0,
           megapixels:0
         });
-        resolve();
-      };
-      img.src=currentUrl;
-    });
+        processNextImage(index+1);
+      }
+    };
+    
+    img.src=currentUrl;
   }
   
-  var html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Images & PDFs - '+propertyTitle.replace(/</g,'&lt;')+'</title><style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:20px;background:#f5f5f5}.header{background:white;padding:20px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}.header h1{margin:0 0 10px 0;color:#333}.header p{margin:5px 0;color:#666}.filters{background:white;padding:15px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}.filter-group{display:inline-block;margin:10px 15px 10px 0}.filter-group label{display:block;margin-bottom:5px;font-weight:bold;color:#555}.filter-group input{padding:5px;width:100px;border:1px solid #ddd;border-radius:4px}.controls{background:white;padding:15px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}button{padding:10px 20px;margin:5px;cursor:pointer;border:none;border-radius:4px;font-size:14px;font-weight:bold}button:hover{opacity:0.9}button:disabled{opacity:0.5;cursor:not-allowed}.btn-primary{background:#4CAF50;color:white}.btn-secondary{background:#2196F3;color:white}.btn-danger{background:#f44336;color:white}.section{background:white;padding:20px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}.section h2{margin:0 0 15px 0;color:#333;border-bottom:2px solid #4CAF50;padding-bottom:10px}.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:15px}.image-card{border:2px solid #ddd;border-radius:8px;overflow:hidden;background:white;transition:transform 0.2s}.image-card:hover{transform:translateY(-5px);box-shadow:0 4px 8px rgba(0,0,0,0.2)}.image-card.selected{border-color:#4CAF50;box-shadow:0 0 10px rgba(76,175,80,0.5)}.image-wrapper{position:relative;padding-top:75%;background:#f9f9f9}.image-wrapper img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain}.image-info{padding:10px;font-size:12px;color:#666}.image-info div{margin:3px 0}.checkbox-wrapper{padding:10px;text-align:center}.checkbox-wrapper input{width:20px;height:20px;cursor:pointer}.tag-buttons{padding:5px;display:flex;flex-wrap:wrap;gap:5px;justify-content:center}.tag-btn{padding:5px 10px;font-size:11px;border:1px solid #ddd;background:white;color:#333;border-radius:3px;cursor:pointer}.tag-btn:hover{background:#f0f0f0}.tag-btn.active{background:#4CAF50;color:white;border-color:#4CAF50}.download-link{display:block;text-align:center;padding:8px;background:#2196F3;color:white;text-decoration:none;border-radius:4px;margin-top:5px}.download-link:hover{background:#1976D2}.pdf-list{list-style:none;padding:0}.pdf-item{padding:15px;margin:10px 0;background:#f9f9f9;border-left:4px solid #2196F3;border-radius:4px}.pdf-item a{color:#2196F3;text-decoration:none;font-weight:bold}.pdf-item a:hover{text-decoration:underline}</style></head><body>'+
-  '<div class="header"><h1>Images & PDFs Viewer</h1><p><strong>Property:</strong> '+propertyTitle.replace(/</g,'&lt;')+'</p><p><strong>Source:</strong> '+siteName+'</p><p><strong>URL:</strong> <a href="'+propertyUrl+'" target="_blank">'+propertyUrl+'</a></p><p><strong>Images:</strong> '+imageDimensions.length+' | <strong>PDFs:</strong> '+pdfs.length+'</p></div>'+
-  '<div class="filters"><h3 style="margin:0 0 10px 0">Filters</h3><div class="filter-group"><label>Min Width (px):</label><input type="number" id="minWidth" value="0"></div><div class="filter-group"><label>Max Width (px):</label><input type="number" id="maxWidth" value="99999"></div><div class="filter-group"><label>Min Height (px):</label><input type="number" id="minHeight" value="0"></div><div class="filter-group"><label>Max Height (px):</label><input type="number" id="maxHeight" value="99999"></div><div class="filter-group"><label>Min Megapixels:</label><input type="number" step="0.1" id="minMP" value="0"></div><div class="filter-group"><label>Max Megapixels:</label><input type="number" step="0.1" id="maxMP" value="999"></div><br><button class="btn-primary" onclick="applyFilters()">Apply Filters</button><button class="btn-secondary" onclick="resetFilters()">Reset Filters</button></div>'+
-  '<div class="controls"><button class="btn-secondary" onclick="selectAll()">✓ Select All</button><button class="btn-secondary" onclick="deselectAll()">✗ Deselect All</button><button class="btn-danger" onclick="deleteSelected()">🗑 Delete Selected</button><button class="btn-primary" onclick="downloadCSV()">📊 Export CSV</button></div>';
-  
-  if(pdfs.length>0){
-    html+='<div class="section"><h2>📄 PDF Documents ('+pdfs.length+')</h2><ul class="pdf-list">';
-    pdfs.forEach(function(pdf,idx){
-      html+='<li class="pdf-item"><a href="'+pdf.url+'" target="_blank" download>📥 '+(pdf.text||'PDF '+(idx+1))+'</a><br><small style="color:#666;">'+pdf.url+'</small></li>';
+  function generateHTML(){
+    '<div class="header"><h1>Images & PDFs Viewer</h1><p><strong>Property:</strong> '+propertyTitle.replace(/</g,'&lt;')+'</p><p><strong>Source:</strong> '+siteName+'</p><p><strong>URL:</strong> <a href="'+propertyUrl+'" target="_blank">'+propertyUrl+'</a></p><p><strong>Images:</strong> '+imageDimensions.length+' | <strong>PDFs:</strong> '+pdfs.length+'</p></div>'+
+    '<div class="filters"><h3 style="margin:0 0 10px 0">Filters</h3><div class="filter-group"><label>Min Width (px):</label><input type="number" id="minWidth" value="0"></div><div class="filter-group"><label>Max Width (px):</label><input type="number" id="maxWidth" value="99999"></div><div class="filter-group"><label>Min Height (px):</label><input type="number" id="minHeight" value="0"></div><div class="filter-group"><label>Max Height (px):</label><input type="number" id="maxHeight" value="99999"></div><div class="filter-group"><label>Min Megapixels:</label><input type="number" step="0.1" id="minMP" value="0"></div><div class="filter-group"><label>Max Megapixels:</label><input type="number" step="0.1" id="maxMP" value="999"></div><br><button class="btn-primary" onclick="applyFilters()">Apply Filters</button><button class="btn-secondary" onclick="resetFilters()">Reset Filters</button></div>'+
+    '<div class="controls"><button class="btn-secondary" onclick="selectAll()">✓ Select All</button><button class="btn-secondary" onclick="deselectAll()">✗ Deselect All</button><button class="btn-danger" onclick="deleteSelected()">🗑 Delete Selected</button><button class="btn-primary" onclick="downloadCSV()">📊 Export CSV</button></div>';
+    
+    if(pdfs.length>0){
+      html+='<div class="section"><h2>📄 PDF Documents ('+pdfs.length+')</h2><ul class="pdf-list">';
+      pdfs.forEach(function(pdf,idx){
+        html+='<li class="pdf-item"><a href="'+pdf.url+'" target="_blank" download>📥 '+(pdf.text||'PDF '+(idx+1))+'</a><br><small style="color:#666;">'+pdf.url+'</small></li>';
+      });
+      html+='</ul></div>';
+    }
+    
+    html+='<div class="section"><h2>🖼 Images (<span id="imageCount">'+imageDimensions.length+'</span>)</h2><div class="gallery" id="gallery">';
+    
+    imageDimensions.forEach(function(item,i){
+      html+='<div class="image-card" data-width="'+item.width+'" data-height="'+item.height+'" data-mp="'+item.megapixels+'">'+
+        '<div class="checkbox-wrapper"><input type="checkbox" class="img-checkbox" data-url="'+item.url+'" data-index="'+i+'"></div>'+
+        '<div class="image-wrapper"><img src="'+item.url+'" alt="Image '+(i+1)+'" loading="lazy"></div>'+
+        '<div class="image-info"><div><strong>Dimensions:</strong> '+item.width+' × '+item.height+'</div><div><strong>Megapixels:</strong> '+item.megapixels+' MP</div></div>'+
+        '<div class="tag-buttons"><button class="tag-btn" onclick="toggleTag(this,\'Primary\')">Primary</button><button class="tag-btn" onclick="toggleTag(this,\'Alt1\')">Alt 1</button><button class="tag-btn" onclick="toggleTag(this,\'Alt2\')">Alt 2</button><button class="tag-btn" onclick="toggleTag(this,\'ProMap\')">ProMap</button></div>'+
+        '<a href="'+item.url+'" download="Image_'+(i+1)+'.jpg" class="download-link">⬇️ Download</a></div>';
     });
-    html+='</ul></div>';
+    
+    html+='</div></div><script>function applyFilters(){var minW=parseInt(document.getElementById("minWidth").value)||0;var maxW=parseInt(document.getElementById("maxWidth").value)||99999;var minH=parseInt(document.getElementById("minHeight").value)||0;var maxH=parseInt(document.getElementById("maxHeight").value)||99999;var minMP=parseFloat(document.getElementById("minMP").value)||0;var maxMP=parseFloat(document.getElementById("maxMP").value)||999;var cards=document.querySelectorAll(".image-card");var count=0;cards.forEach(function(card){var w=parseInt(card.dataset.width);var h=parseInt(card.dataset.height);var mp=parseFloat(card.dataset.mp);if(w>=minW&&w<=maxW&&h>=minH&&h<=maxH&&mp>=minMP&&mp<=maxMP){card.style.display="block";count++;}else{card.style.display="none";}});document.getElementById("imageCount").textContent=count;}function resetFilters(){document.getElementById("minWidth").value=0;document.getElementById("maxWidth").value=99999;document.getElementById("minHeight").value=0;document.getElementById("maxHeight").value=99999;document.getElementById("minMP").value=0;document.getElementById("maxMP").value=999;applyFilters();}function selectAll(){document.querySelectorAll(".image-card").forEach(function(card){if(card.style.display!=="none"){card.querySelector(".img-checkbox").checked=true;card.classList.add("selected");}});}function deselectAll(){document.querySelectorAll(".img-checkbox").forEach(function(cb){cb.checked=false;cb.closest(".image-card").classList.remove("selected");});}function deleteSelected(){if(!confirm("Delete selected images?"))return;document.querySelectorAll(".img-checkbox:checked").forEach(function(cb){cb.closest(".image-card").remove();});applyFilters();}function toggleTag(btn,tag){btn.classList.toggle("active");var card=btn.closest(".image-card");if(!card.dataset.tags)card.dataset.tags="";var tags=card.dataset.tags.split(",").filter(function(t){return t});if(btn.classList.contains("active")){if(!tags.includes(tag))tags.push(tag);}else{tags=tags.filter(function(t){return t!==tag});}card.dataset.tags=tags.join(",");}function downloadCSV(){var rows=[["Property","URL","Image Number","Image URL","Width","Height","Megapixels","Tags"]];document.querySelectorAll(".image-card").forEach(function(card,i){if(card.style.display!=="none"){var cb=card.querySelector(".img-checkbox");var url=cb.dataset.url;var w=card.dataset.width;var h=card.dataset.height;var mp=card.dataset.mp;var tags=card.dataset.tags||"";rows.push(["'+propertyTitle.replace(/"/g,'\\"')+'","'+propertyUrl+'","'+(i+1)+'","'+url+'","'+w+'","'+h+'","'+mp+'","'+tags+'"]);}});var csv=rows.map(function(r){return r.map(function(c){return \'"\'+String(c).replace(/"/g,\'""\')+\'"\';}).join(",");}).join("\\n");var blob=new Blob([csv],{type:"text/csv"});var url=URL.createObjectURL(blob);var a=document.createElement("a");a.href=url;a.download="images_"+Date.now()+".csv";a.click();URL.revokeObjectURL(url);}document.querySelectorAll(".img-checkbox").forEach(function(cb){cb.addEventListener("change",function(){this.closest(".image-card").classList.toggle("selected",this.checked);});});<\/script></body></html>';
+    
+    var blob=new Blob([html],{type:'text/html'});
+    var blobUrl=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=blobUrl;
+    a.download='images_pdfs_'+Date.now()+'.html';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+    alert('HTML file downloaded! Open it to view images and PDFs.');
+    document.body.removeChild(div);
   }
   
-  html+='<div class="section"><h2>🖼 Images (<span id="imageCount">'+imageDimensions.length+'</span>)</h2><div class="gallery" id="gallery">';
-  
-  imageDimensions.forEach(function(item,i){
-    html+='<div class="image-card" data-width="'+item.width+'" data-height="'+item.height+'" data-mp="'+item.megapixels+'">'+
-      '<div class="checkbox-wrapper"><input type="checkbox" class="img-checkbox" data-url="'+item.url+'" data-index="'+i+'"></div>'+
-      '<div class="image-wrapper"><img src="'+item.url+'" alt="Image '+(i+1)+'" loading="lazy"></div>'+
-      '<div class="image-info"><div><strong>Dimensions:</strong> '+item.width+' × '+item.height+'</div><div><strong>Megapixels:</strong> '+item.megapixels+' MP</div></div>'+
-      '<div class="tag-buttons"><button class="tag-btn" onclick="toggleTag(this,\'Primary\')">Primary</button><button class="tag-btn" onclick="toggleTag(this,\'Alt1\')">Alt 1</button><button class="tag-btn" onclick="toggleTag(this,\'Alt2\')">Alt 2</button><button class="tag-btn" onclick="toggleTag(this,\'ProMap\')">ProMap</button></div>'+
-      '<a href="'+item.url+'" download="Image_'+(i+1)+'.jpg" class="download-link">⬇️ Download</a></div>';
-  });
-  
-  html+='</div></div><script>function applyFilters(){var minW=parseInt(document.getElementById("minWidth").value)||0;var maxW=parseInt(document.getElementById("maxWidth").value)||99999;var minH=parseInt(document.getElementById("minHeight").value)||0;var maxH=parseInt(document.getElementById("maxHeight").value)||99999;var minMP=parseFloat(document.getElementById("minMP").value)||0;var maxMP=parseFloat(document.getElementById("maxMP").value)||999;var cards=document.querySelectorAll(".image-card");var count=0;cards.forEach(function(card){var w=parseInt(card.dataset.width);var h=parseInt(card.dataset.height);var mp=parseFloat(card.dataset.mp);if(w>=minW&&w<=maxW&&h>=minH&&h<=maxH&&mp>=minMP&&mp<=maxMP){card.style.display="block";count++;}else{card.style.display="none";}});document.getElementById("imageCount").textContent=count;}function resetFilters(){document.getElementById("minWidth").value=0;document.getElementById("maxWidth").value=99999;document.getElementById("minHeight").value=0;document.getElementById("maxHeight").value=99999;document.getElementById("minMP").value=0;document.getElementById("maxMP").value=999;applyFilters();}function selectAll(){document.querySelectorAll(".image-card").forEach(function(card){if(card.style.display!=="none"){card.querySelector(".img-checkbox").checked=true;card.classList.add("selected");}});}function deselectAll(){document.querySelectorAll(".img-checkbox").forEach(function(cb){cb.checked=false;cb.closest(".image-card").classList.remove("selected");});}function deleteSelected(){if(!confirm("Delete selected images?"))return;document.querySelectorAll(".img-checkbox:checked").forEach(function(cb){cb.closest(".image-card").remove();});applyFilters();}function toggleTag(btn,tag){btn.classList.toggle("active");var card=btn.closest(".image-card");if(!card.dataset.tags)card.dataset.tags="";var tags=card.dataset.tags.split(",").filter(function(t){return t});if(btn.classList.contains("active")){if(!tags.includes(tag))tags.push(tag);}else{tags=tags.filter(function(t){return t!==tag});}card.dataset.tags=tags.join(",");}function downloadCSV(){var rows=[["Property","URL","Image Number","Image URL","Width","Height","Megapixels","Tags"]];document.querySelectorAll(".image-card").forEach(function(card,i){if(card.style.display!=="none"){var cb=card.querySelector(".img-checkbox");var url=cb.dataset.url;var w=card.dataset.width;var h=card.dataset.height;var mp=card.dataset.mp;var tags=card.dataset.tags||"";rows.push(["'+propertyTitle.replace(/"/g,'\\"')+'","'+propertyUrl+'","'+(i+1)+'","'+url+'","'+w+'","'+h+'","'+mp+'","'+tags+'"]);}});var csv=rows.map(function(r){return r.map(function(c){return \'"\'+String(c).replace(/"/g,\'""\')+\'"\';}).join(",");}).join("\\n");var blob=new Blob([csv],{type:"text/csv"});var url=URL.createObjectURL(blob);var a=document.createElement("a");a.href=url;a.download="images_"+Date.now()+".csv";a.click();URL.revokeObjectURL(url);}document.querySelectorAll(".img-checkbox").forEach(function(cb){cb.addEventListener("change",function(){this.closest(".image-card").classList.toggle("selected",this.checked);});});<\/script></body></html>';
-  
-  var blob=new Blob([html],{type:'text/html'});
-  var blobUrl=URL.createObjectURL(blob);
-  var a=document.createElement('a');
-  a.href=blobUrl;
-  a.download='images_pdfs_'+Date.now()+'.html';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(blobUrl);
-  alert('HTML file downloaded! Open it to view images and PDFs.');
-  document.body.removeChild(div);
+  processNextImage(0);
 };
 
 document.getElementById('closeBtn').onclick=function(){

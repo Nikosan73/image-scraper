@@ -1,7 +1,7 @@
 (function(){
 
 // VERSION
-var VERSION = '1.0.9';
+var VERSION = '2.0.0';
 
 var HANDLERS={
   allsop:{
@@ -46,7 +46,6 @@ var HANDLERS={
       document.querySelectorAll('img[srcset]').forEach(function(img){
         var srcset=img.srcset;
         if(srcset && srcset.includes('propertylinkassets')){
-          // Extract all URLs with their widths
           var matches=srcset.match(/https:\/\/[^\s]+\s+(\d+)w/g);
           if(matches){
             var maxWidth=0;
@@ -99,7 +98,6 @@ var HANDLERS={
       var u=[];
       var seen={};
       
-      // Handle srcset images (like Estates Gazette)
       document.querySelectorAll('img[srcset]').forEach(function(img){
         var srcset=img.srcset;
         if(srcset){
@@ -126,7 +124,6 @@ var HANDLERS={
         }
       });
       
-      // Regular img tags
       document.querySelectorAll('img').forEach(function(img){
         if(img.src && img.src.startsWith('http') && img.naturalWidth>200 && !seen[img.src]){
           if(!img.src.match(/logo|icon|sprite|avatar|thumb/i)){
@@ -136,7 +133,6 @@ var HANDLERS={
         }
       });
       
-      // Picture source tags
       document.querySelectorAll('picture source').forEach(function(src){
         var srcset=src.srcset||'';
         var matches=srcset.match(/https:\/\/[^\s,]+/g);
@@ -150,7 +146,6 @@ var HANDLERS={
         }
       });
       
-      // Background images
       document.querySelectorAll('[style*="background-image"]').forEach(function(el){
         var style=el.getAttribute('style')||'';
         var matches=style.match(/url\(['""]?([^'"")]+)['""]?\)/g);
@@ -175,51 +170,6 @@ var HANDLERS={
   }
 };
 
-// Extract PDFs
-function extractPDFs(){
-  var pdfs=[];
-  var seen={};
-  
-  // Links to PDFs
-  document.querySelectorAll('a[href$=".pdf"], a[href*=".pdf?"]').forEach(function(a){
-    var href=a.href;
-    if(!seen[href]){
-      seen[href]=true;
-      pdfs.push({
-        url: href,
-        text: a.textContent.trim() || 'PDF Document'
-      });
-    }
-  });
-  
-  // Embedded PDFs
-  document.querySelectorAll('embed[type="application/pdf"], object[type="application/pdf"]').forEach(function(el){
-    var src=el.src || el.data;
-    if(src && !seen[src]){
-      seen[src]=true;
-      pdfs.push({
-        url: src,
-        text: 'Embedded PDF'
-      });
-    }
-  });
-  
-  // iframes with PDFs
-  document.querySelectorAll('iframe[src*=".pdf"]').forEach(function(iframe){
-    var src=iframe.src;
-    if(src && !seen[src]){
-      seen[src]=true;
-      pdfs.push({
-        url: src,
-        text: 'PDF (iframe)'
-      });
-    }
-  });
-  
-  return pdfs;
-}
-
-// Detect site and extract
 var handler=null;
 for(var key in HANDLERS){
   if(HANDLERS[key].detect()){
@@ -229,29 +179,21 @@ for(var key in HANDLERS){
 }
 
 var urls=handler.extract();
-
-// Filter out any PDFs from image URLs
-urls=urls.filter(function(url){
-  return !url.match(/\.pdf(\?|#|$)/i);
-});
-
-var pdfs=extractPDFs();
+urls=urls.filter(function(url){return !url.match(/\.pdf(\?|#|$)/i);});
 var siteName=handler.name;
 var propertyTitle=document.title||'Property';
 var propertyUrl=window.location.href;
 
-if(urls.length===0 && pdfs.length===0){
-  alert('No images or PDFs found on this page!');
+if(urls.length===0){
+  alert('No images found on this page!');
   return;
 }
 
-// Create popup dialog
 var div=document.createElement('div');
 div.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;border:3px solid #333;padding:20px;z-index:999999;box-shadow:0 4px 20px rgba(0,0,0,0.3);font-family:Arial,sans-serif;min-width:400px;max-width:500px;';
-div.innerHTML='<h2 style="margin:0 0 15px 0;color:#333;">Image & PDF Scraper</h2>'+
+div.innerHTML='<h2 style="margin:0 0 15px 0;color:#333;">Image Scraper</h2>'+
   '<p style="margin:5px 0;"><strong>Site:</strong> '+siteName+'</p>'+
   '<p style="margin:5px 0;"><strong>Images Found:</strong> '+urls.length+'</p>'+
-  '<p style="margin:5px 0;"><strong>PDFs Found:</strong> '+pdfs.length+'</p>'+
   '<p style="margin:5px 0;color:#666;font-size:12px;">Version '+VERSION+'</p>'+
   '<div style="margin-top:15px;">'+
   '<button id="htmlBtn" style="padding:10px 15px;margin:5px;cursor:pointer;background:#4CAF50;color:white;border:none;border-radius:4px;font-size:14px;">📄 Download HTML Viewer</button>'+
@@ -265,10 +207,11 @@ document.getElementById('htmlBtn').onclick=function(){
   btn.textContent='Processing...';
   
   var imageDimensions=[];
+  var index=0;
   
-  function processNextImage(index){
+  function processNext(){
     if(index>=urls.length){
-      generateHTML();
+      createViewer();
       return;
     }
     
@@ -281,13 +224,9 @@ document.getElementById('htmlBtn').onclick=function(){
     var timeout=setTimeout(function(){
       if(!done){
         done=true;
-        imageDimensions.push({
-          url:currentUrl,
-          width:0,
-          height:0,
-          megapixels:0
-        });
-        processNextImage(index+1);
+        imageDimensions.push({url:currentUrl,width:0,height:0,mp:0});
+        index++;
+        processNext();
       }
     },2000);
     
@@ -295,13 +234,10 @@ document.getElementById('htmlBtn').onclick=function(){
       if(!done){
         done=true;
         clearTimeout(timeout);
-        imageDimensions.push({
-          url:currentUrl,
-          width:this.naturalWidth,
-          height:this.naturalHeight,
-          megapixels:(this.naturalWidth*this.naturalHeight/1000000).toFixed(2)
-        });
-        processNextImage(index+1);
+        var mp=(this.naturalWidth*this.naturalHeight/1000000).toFixed(2);
+        imageDimensions.push({url:currentUrl,width:this.naturalWidth,height:this.naturalHeight,mp:mp});
+        index++;
+        processNext();
       }
     };
     
@@ -309,59 +245,190 @@ document.getElementById('htmlBtn').onclick=function(){
       if(!done){
         done=true;
         clearTimeout(timeout);
-        imageDimensions.push({
-          url:currentUrl,
-          width:0,
-          height:0,
-          megapixels:0
-        });
-        processNextImage(index+1);
+        imageDimensions.push({url:currentUrl,width:0,height:0,mp:0});
+        index++;
+        processNext();
       }
     };
     
     img.src=currentUrl;
   }
   
-  function generateHTML(){
-    '<div class="header"><h1>Images & PDFs Viewer</h1><p><strong>Property:</strong> '+propertyTitle.replace(/</g,'&lt;')+'</p><p><strong>Source:</strong> '+siteName+'</p><p><strong>URL:</strong> <a href="'+propertyUrl+'" target="_blank">'+propertyUrl+'</a></p><p><strong>Images:</strong> '+imageDimensions.length+' | <strong>PDFs:</strong> '+pdfs.length+'</p></div>'+
-    '<div class="filters"><h3 style="margin:0 0 10px 0">Filters</h3><div class="filter-group"><label>Min Width (px):</label><input type="number" id="minWidth" value="0"></div><div class="filter-group"><label>Max Width (px):</label><input type="number" id="maxWidth" value="99999"></div><div class="filter-group"><label>Min Height (px):</label><input type="number" id="minHeight" value="0"></div><div class="filter-group"><label>Max Height (px):</label><input type="number" id="maxHeight" value="99999"></div><div class="filter-group"><label>Min Megapixels:</label><input type="number" step="0.1" id="minMP" value="0"></div><div class="filter-group"><label>Max Megapixels:</label><input type="number" step="0.1" id="maxMP" value="999"></div><br><button class="btn-primary" onclick="applyFilters()">Apply Filters</button><button class="btn-secondary" onclick="resetFilters()">Reset Filters</button></div>'+
-    '<div class="controls"><button class="btn-secondary" onclick="selectAll()">✓ Select All</button><button class="btn-secondary" onclick="deselectAll()">✗ Deselect All</button><button class="btn-danger" onclick="deleteSelected()">🗑 Delete Selected</button><button class="btn-primary" onclick="downloadCSV()">📊 Export CSV</button></div>';
+  function createViewer(){
+    btn.textContent='Creating viewer...';
     
-    if(pdfs.length>0){
-      html+='<div class="section"><h2>📄 PDF Documents ('+pdfs.length+')</h2><ul class="pdf-list">';
-      pdfs.forEach(function(pdf,idx){
-        html+='<li class="pdf-item"><a href="'+pdf.url+'" target="_blank" download>📥 '+(pdf.text||'PDF '+(idx+1))+'</a><br><small style="color:#666;">'+pdf.url+'</small></li>';
-      });
-      html+='</ul></div>';
+    var propTitle=propertyTitle.replace(/'/g,"\\'").replace(/"/g,'\\"').replace(/\n/g,' ');
+    var propUrl=propertyUrl.replace(/'/g,"\\'").replace(/"/g,'\\"');
+    
+    var output='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+propertyTitle.replace(/</g,'&lt;')+'</title>';
+    output+='<style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:20px;background:#f5f5f5}';
+    output+='.header{background:white;padding:20px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}';
+    output+='.controls{background:white;padding:15px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}';
+    output+='button{padding:10px 15px;margin:5px;cursor:pointer;border:none;border-radius:4px;font-weight:bold}';
+    output+='.btn-primary{background:#4CAF50;color:white}.btn-secondary{background:#2196F3;color:white}.btn-danger{background:#f44336;color:white}';
+    output+='.filters{background:white;padding:15px;margin-bottom:20px;border-radius:8px}';
+    output+='.filter-group{display:inline-block;margin:10px 15px 10px 0}';
+    output+='.filter-group label{display:block;margin-bottom:5px;font-weight:bold}';
+    output+='.filter-group input{padding:5px;width:100px;border:1px solid #ddd;border-radius:4px}';
+    output+='.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:15px}';
+    output+='.card{border:2px solid #ddd;border-radius:8px;background:white;padding:10px}';
+    output+='.card.selected{border-color:#4CAF50;box-shadow:0 0 10px rgba(76,175,80,0.5)}';
+    output+='.card.deleted{display:none}';
+    output+='.card img{width:100%;height:200px;object-fit:contain;background:#f9f9f9}';
+    output+='.card-info{padding:10px 0;font-size:13px}';
+    output+='.tag-select{width:100%;padding:5px;margin:5px 0;border:1px solid #ddd;border-radius:4px}';
+    output+='.download-btn{display:block;width:100%;padding:8px;background:#2196F3;color:white;text-decoration:none;text-align:center;border-radius:4px;margin-top:5px}';
+    output+='</style></head><body>';
+    
+    output+='<div class="header"><h1>Image Manager</h1>';
+    output+='<p><strong>Property:</strong> '+propertyTitle.replace(/</g,'&lt;')+'</p>';
+    output+='<p><strong>Source:</strong> '+siteName+'</p>';
+    output+='<p><strong>Images:</strong> <span id="imgCount">'+imageDimensions.length+'</span></p></div>';
+    
+    output+='<div class="filters"><h3>Filter by Megapixels</h3>';
+    output+='<div class="filter-group"><label>Min MP:</label><input type="number" step="0.1" id="minMP" value="0"></div>';
+    output+='<div class="filter-group"><label>Max MP:</label><input type="number" step="0.1" id="maxMP" value="999"></div>';
+    output+='<button class="btn-primary" onclick="applyFilters()">Apply</button>';
+    output+='<button class="btn-secondary" onclick="resetFilters()">Reset</button></div>';
+    
+    output+='<div class="controls">';
+    output+='<button class="btn-secondary" onclick="selectAll()">✓ Select All</button>';
+    output+='<button class="btn-secondary" onclick="deselectAll()">✗ Deselect All</button>';
+    output+='<button class="btn-danger" onclick="deleteSelected()">🗑 Delete Selected</button>';
+    output+='<button class="btn-primary" onclick="exportCSV()">📊 Export CSV</button>';
+    output+='<span id="selCount" style="margin-left:10px;font-weight:bold">0 selected</span></div>';
+    
+    output+='<div class="gallery" id="gallery">';
+    
+    for(var i=0;i<imageDimensions.length;i++){
+      var item=imageDimensions[i];
+      output+='<div class="card" id="card'+i+'" data-mp="'+item.mp+'" data-idx="'+i+'">';
+      output+='<input type="checkbox" onchange="updateCount()">';
+      output+='<img src="'+item.url+'" loading="lazy">';
+      output+='<div class="card-info"><strong>'+item.mp+' MP</strong></div>';
+      output+='<select class="tag-select" onchange="tagChanged('+i+',this.value)">';
+      output+='<option value="">No Tag</option>';
+      output+='<option value="Primary">Primary Image</option>';
+      output+='<option value="Alt1">Alternate Image 1</option>';
+      output+='<option value="Alt2">Alternate Image 2</option>';
+      output+='<option value="ProMap">ProMap</option>';
+      output+='</select>';
+      output+='<a href="'+item.url+'" download="Image_'+(i+1)+'.jpg" class="download-btn">⬇ Download</a>';
+      output+='</div>';
     }
     
-    html+='<div class="section"><h2>🖼 Images (<span id="imageCount">'+imageDimensions.length+'</span>)</h2><div class="gallery" id="gallery">';
+    output+='</div>';
     
-    imageDimensions.forEach(function(item,i){
-      html+='<div class="image-card" data-width="'+item.width+'" data-height="'+item.height+'" data-mp="'+item.megapixels+'">'+
-        '<div class="checkbox-wrapper"><input type="checkbox" class="img-checkbox" data-url="'+item.url+'" data-index="'+i+'"></div>'+
-        '<div class="image-wrapper"><img src="'+item.url+'" alt="Image '+(i+1)+'" loading="lazy"></div>'+
-        '<div class="image-info"><div><strong>Dimensions:</strong> '+item.width+' × '+item.height+'</div><div><strong>Megapixels:</strong> '+item.megapixels+' MP</div></div>'+
-        '<div class="tag-buttons"><button class="tag-btn" onclick="toggleTag(this,\'Primary\')">Primary</button><button class="tag-btn" onclick="toggleTag(this,\'Alt1\')">Alt 1</button><button class="tag-btn" onclick="toggleTag(this,\'Alt2\')">Alt 2</button><button class="tag-btn" onclick="toggleTag(this,\'ProMap\')">ProMap</button></div>'+
-        '<a href="'+item.url+'" download="Image_'+(i+1)+'.jpg" class="download-link">⬇️ Download</a></div>';
-    });
+    output+='<script>';
+    output+='var imageData='+JSON.stringify(imageDimensions)+';';
+    output+='var tags={};';
+    output+='var propTitle="'+propTitle+'";';
+    output+='var propUrl="'+propUrl+'";';
     
-    html+='</div></div><script>function applyFilters(){var minW=parseInt(document.getElementById("minWidth").value)||0;var maxW=parseInt(document.getElementById("maxWidth").value)||99999;var minH=parseInt(document.getElementById("minHeight").value)||0;var maxH=parseInt(document.getElementById("maxHeight").value)||99999;var minMP=parseFloat(document.getElementById("minMP").value)||0;var maxMP=parseFloat(document.getElementById("maxMP").value)||999;var cards=document.querySelectorAll(".image-card");var count=0;cards.forEach(function(card){var w=parseInt(card.dataset.width);var h=parseInt(card.dataset.height);var mp=parseFloat(card.dataset.mp);if(w>=minW&&w<=maxW&&h>=minH&&h<=maxH&&mp>=minMP&&mp<=maxMP){card.style.display="block";count++;}else{card.style.display="none";}});document.getElementById("imageCount").textContent=count;}function resetFilters(){document.getElementById("minWidth").value=0;document.getElementById("maxWidth").value=99999;document.getElementById("minHeight").value=0;document.getElementById("maxHeight").value=99999;document.getElementById("minMP").value=0;document.getElementById("maxMP").value=999;applyFilters();}function selectAll(){document.querySelectorAll(".image-card").forEach(function(card){if(card.style.display!=="none"){card.querySelector(".img-checkbox").checked=true;card.classList.add("selected");}});}function deselectAll(){document.querySelectorAll(".img-checkbox").forEach(function(cb){cb.checked=false;cb.closest(".image-card").classList.remove("selected");});}function deleteSelected(){if(!confirm("Delete selected images?"))return;document.querySelectorAll(".img-checkbox:checked").forEach(function(cb){cb.closest(".image-card").remove();});applyFilters();}function toggleTag(btn,tag){btn.classList.toggle("active");var card=btn.closest(".image-card");if(!card.dataset.tags)card.dataset.tags="";var tags=card.dataset.tags.split(",").filter(function(t){return t});if(btn.classList.contains("active")){if(!tags.includes(tag))tags.push(tag);}else{tags=tags.filter(function(t){return t!==tag});}card.dataset.tags=tags.join(",");}function downloadCSV(){var rows=[["Property","URL","Image Number","Image URL","Width","Height","Megapixels","Tags"]];document.querySelectorAll(".image-card").forEach(function(card,i){if(card.style.display!=="none"){var cb=card.querySelector(".img-checkbox");var url=cb.dataset.url;var w=card.dataset.width;var h=card.dataset.height;var mp=card.dataset.mp;var tags=card.dataset.tags||"";rows.push(["'+propertyTitle.replace(/"/g,'\\"')+'","'+propertyUrl+'","'+(i+1)+'","'+url+'","'+w+'","'+h+'","'+mp+'","'+tags+'"]);}});var csv=rows.map(function(r){return r.map(function(c){return \'"\'+String(c).replace(/"/g,\'""\')+\'"\';}).join(",");}).join("\\n");var blob=new Blob([csv],{type:"text/csv"});var url=URL.createObjectURL(blob);var a=document.createElement("a");a.href=url;a.download="images_"+Date.now()+".csv";a.click();URL.revokeObjectURL(url);}document.querySelectorAll(".img-checkbox").forEach(function(cb){cb.addEventListener("change",function(){this.closest(".image-card").classList.toggle("selected",this.checked);});});<\/script></body></html>';
+    output+='function applyFilters(){';
+    output+='var minMP=parseFloat(document.getElementById("minMP").value)||0;';
+    output+='var maxMP=parseFloat(document.getElementById("maxMP").value)||999;';
+    output+='var cards=document.querySelectorAll(".card");';
+    output+='var count=0;';
+    output+='cards.forEach(function(card){';
+    output+='if(card.classList.contains("deleted"))return;';
+    output+='var mp=parseFloat(card.dataset.mp);';
+    output+='if(mp>=minMP&&mp<=maxMP){card.style.display="block";count++;}';
+    output+='else{card.style.display="none";}';
+    output+='});';
+    output+='document.getElementById("imgCount").textContent=count;';
+    output+='}';
     
-    var blob=new Blob([html],{type:'text/html'});
+    output+='function resetFilters(){';
+    output+='document.getElementById("minMP").value=0;';
+    output+='document.getElementById("maxMP").value=999;';
+    output+='applyFilters();';
+    output+='}';
+    
+    output+='function selectAll(){';
+    output+='document.querySelectorAll(".card:not(.deleted)").forEach(function(card){';
+    output+='if(card.style.display!="none")card.querySelector("input").checked=true;';
+    output+='});';
+    output+='updateCount();';
+    output+='}';
+    
+    output+='function deselectAll(){';
+    output+='document.querySelectorAll("input[type=checkbox]").forEach(function(cb){cb.checked=false;});';
+    output+='updateCount();';
+    output+='}';
+    
+    output+='function deleteSelected(){';
+    output+='var selected=[];';
+    output+='document.querySelectorAll(".card input:checked").forEach(function(cb){';
+    output+='selected.push(cb.closest(".card"));';
+    output+='});';
+    output+='if(selected.length==0){alert("Please select images to delete");return;}';
+    output+='if(!confirm("Delete "+selected.length+" images?")){return;}';
+    output+='selected.forEach(function(card){';
+    output+='card.classList.add("deleted");';
+    output+='card.querySelector("input").checked=false;';
+    output+='});';
+    output+='updateCount();';
+    output+='applyFilters();';
+    output+='}';
+    
+    output+='function updateCount(){';
+    output+='var count=document.querySelectorAll(".card:not(.deleted) input:checked").length;';
+    output+='document.getElementById("selCount").textContent=count+" selected";';
+    output+='document.querySelectorAll(".card").forEach(function(card){';
+    output+='if(card.querySelector("input").checked){card.classList.add("selected");}';
+    output+='else{card.classList.remove("selected");}';
+    output+='});';
+    output+='}';
+    
+    output+='function tagChanged(idx,val){';
+    output+='if(val){';
+    output+='for(var k in tags){if(tags[k]==val)delete tags[k];}';
+    output+='tags[idx]=val;';
+    output+='document.querySelectorAll("select").forEach(function(sel){';
+    output+='var cardIdx=parseInt(sel.closest(".card").dataset.idx);';
+    output+='if(cardIdx!=idx&&sel.value==val){sel.value="";}';
+    output+='});';
+    output+='}else{delete tags[idx];}';
+    output+='}';
+    
+    output+='function exportCSV(){';
+    output+='var selected=[];';
+    output+='document.querySelectorAll(".card:not(.deleted) input:checked").forEach(function(cb){';
+    output+='selected.push(parseInt(cb.closest(".card").dataset.idx));';
+    output+='});';
+    output+='if(selected.length==0){alert("Please select images");return;}';
+    output+='selected.sort(function(a,b){return a-b;});';
+    output+='var csv="Property,URL,Image Number,Image URL,Megapixels,Tag\\n";';
+    output+='selected.forEach(function(idx,num){';
+    output+='var img=imageData[idx];';
+    output+='var tag=tags[idx]||"";';
+    output+='csv+="\\""+propTitle+"\\",\\""+propUrl+"\\","+(num+1)+",\\""+img.url+"\\","+img.mp+",\\""+tag+"\\"\\n";';
+    output+='});';
+    output+='var blob=new Blob([csv],{type:"text/csv"});';
+    output+='var link=document.createElement("a");';
+    output+='link.href=URL.createObjectURL(blob);';
+    output+='link.download="images_"+Date.now()+".csv";';
+    output+='link.click();';
+    output+='}';
+    
+    output+='</script></body></html>';
+    
+    var blob=new Blob([output],{type:'text/html'});
     var blobUrl=URL.createObjectURL(blob);
     var a=document.createElement('a');
     a.href=blobUrl;
-    a.download='images_pdfs_'+Date.now()+'.html';
+    a.download='images_'+Date.now()+'.html';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(blobUrl);
-    alert('HTML file downloaded! Open it to view images and PDFs.');
+    
+    alert('HTML viewer downloaded!');
     document.body.removeChild(div);
   }
   
-  processNextImage(0);
+  processNext();
 };
 
 document.getElementById('closeBtn').onclick=function(){

@@ -1,7 +1,7 @@
 (function(){
 
 // VERSION
-var VERSION = '1.0.4';
+var VERSION = '1.0.5';
 
 var HANDLERS={
   allsop:{
@@ -258,18 +258,23 @@ document.getElementById('htmlBtn').onclick=function(){
   btn.disabled=true;
   btn.textContent='Processing...';
   
+  // Filter out any PDFs from the urls array before processing
+  var imageUrls=urls.filter(function(url){
+    return !url.match(/\.pdf(\?|$)/i);
+  });
+  
   var imageDimensions=[];
   var processed=0;
   
   function processNextImage(index){
-    if(index>=urls.length){
+    if(index>=imageUrls.length){
       generateHTML();
       return;
     }
     
-    btn.textContent='Processing '+(index+1)+'/'+urls.length+'...';
+    btn.textContent='Processing '+(index+1)+'/'+imageUrls.length+'...';
     
-    var currentUrl=urls[index];
+    var currentUrl=imageUrls[index];
     var img=new Image();
     var done=false;
     

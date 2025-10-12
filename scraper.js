@@ -5,37 +5,47 @@
 // ========================================
 
 var HANDLERS = {
+  
+  // ALLSOP SCRAPER
   allsop: {
     name: 'Allsop',
-    detect: function(){ return window.location.hostname.includes('allsop.co.uk'); },
+    detect: function(){
+      return window.location.hostname.includes('allsop.co.uk');
+    },
     extract: function(){
-      var urls = [];
-      document.querySelectorAll('.__image_div[style*="background-image"]').forEach(function(div){
-        var style = div.getAttribute('style');
-        var match = style.match(/url\("([^"]+)"\)|url\('([^']+)'\)|url\(([^)]+)\)/);
-        if(match){
-          var url = match[1] || match[2] || match[3];
+      var u = [];
+      document.querySelectorAll('.__image_div[style*="background-image"]').forEach(function(d){
+        var s = d.getAttribute('style');
+        var m = s.match(/url\("([^"]+)"\)|url\('([^']+)'\)|url\(([^)]+)\)/);
+        if(m){
+          var url = m[1] || m[2] || m[3];
           if(url.startsWith('api/')) url = window.location.origin + '/' + url;
           else if(url.startsWith('/api/')) url = window.location.origin + url;
           else if(!url.startsWith('http')) url = window.location.origin + '/' + url;
-          if(!urls.includes(url)) urls.push(url);
+          if(!u.includes(url)) u.push(url);
         }
       });
-      return urls;
+      return u;
     }
   },
+  
+  // ZOOPLA SCRAPER
   zoopla: {
     name: 'Zoopla',
-    detect: function(){ return window.location.hostname.includes('zoopla.co.uk'); },
+    detect: function(){
+      return window.location.hostname.includes('zoopla.co.uk');
+    },
     extract: function(){
-      var urls = [];
-      document.querySelectorAll('picture.tnabq04 source[type="image/jpeg"]').forEach(function(source){
-        var match = source.srcset.match(/https:\/\/[^\s]+2400\/1800\/[^\s]+\.jpg/);
-        if(match && !urls.includes(match[0])) urls.push(match[0]);
+      var u = [];
+      document.querySelectorAll('picture.tnabq04 source[type="image/jpeg"]').forEach(function(s){
+        var m = s.srcset.match(/https:\/\/[^\s]+2400\/1800\/[^\s]+\.jpg/);
+        if(m && !u.includes(m[0])) u.push(m[0]);
       });
-      return urls;
+      return u;
     }
   },
+  
+  // EMAIL SCRAPER
   email: {
     name: 'Email (HTML)',
     detect: function(){
@@ -45,28 +55,34 @@ var HANDLERS = {
              document.querySelectorAll('a[href^="mailto:"]').length > 2;
     },
     extract: function(){
-      var urls = [];
+      var u = [];
       document.querySelectorAll('img').forEach(function(img){
         if(img.src && img.src.startsWith('data:image/')){
-          var match = img.src.match(/^data:image\/(jpeg|jpg|png|gif|webp);base64,(.+)$/);
-          if(match && match[2].length > 100) urls.push(img.src);
+          var m = img.src.match(/^data:image\/(jpeg|jpg|png|gif|webp);base64,(.+)$/);
+          if(m && m[2].length > 100) u.push(img.src);
         } else if(img.src && img.src.startsWith('http')){
           var w = img.naturalWidth || img.width || 0;
           var h = img.naturalHeight || img.height || 0;
-          if(w > 50 && h > 50 && !urls.includes(img.src)) urls.push(img.src);
+          if(w > 50 && h > 50 && !u.includes(img.src)) u.push(img.src);
         }
       });
-      return urls.filter(function(url){ return !url.includes('spacer') && !url.includes('tracking'); });
+      return u.filter(function(url){
+        return !url.includes('spacer') && !url.includes('tracking');
+      });
     }
   },
+  
+  // GENERIC SCRAPER (fallback)
   generic: {
     name: 'Generic',
-    detect: function(){ return true; },
+    detect: function(){
+      return true;
+    },
     extract: function(){
-      var urls = [];
+      var u = [];
       document.querySelectorAll('img').forEach(function(img){
-        if(img.src && img.src.startsWith('http') && img.naturalWidth > 50 && !urls.includes(img.src)){
-          urls.push(img.src);
+        if(img.src && img.src.startsWith('http') && img.naturalWidth > 50 && !u.includes(img.src)){
+          u.push(img.src);
         }
       });
       document.querySelectorAll('[style*="background-image"]').forEach(function(el){
@@ -77,20 +93,29 @@ var HANDLERS = {
             var url = match.replace(/url\(['"&quot;]?/,'').replace(/['"&quot;)]/g,'').trim();
             if(url.startsWith('/')) url = window.location.origin + url;
             else if(!url.startsWith('http') && !url.startsWith('data:')) url = window.location.origin + '/' + url;
-            if(url.startsWith('http') && !urls.includes(url)) urls.push(url);
+            if(url.startsWith('http') && !u.includes(url)) u.push(url);
           });
         }
       });
-      return urls.filter(function(url){
-        return !url.includes('logo') && !url.includes('icon') && !url.includes('sprite') && 
-               !url.includes('tiny') && !url.includes('small') && !url.match(/\.(svg|gif)$/i);
+      return u.filter(function(url){
+        return !url.includes('logo') && 
+               !url.includes('icon') && 
+               !url.includes('sprite') && 
+               !url.includes('tiny') && 
+               !url.includes('small') && 
+               !url.match(/\.(svg|gif)$/i);
       });
     }
   }
 };
 
+// ========================================
+// DETECT SITE AND EXTRACT IMAGES
+// ========================================
+
 var detected = 'generic';
 var siteName = 'Generic';
+
 for(var key in HANDLERS){
   if(key !== 'generic' && HANDLERS[key].detect()){
     detected = key;
@@ -100,6 +125,7 @@ for(var key in HANDLERS){
 }
 
 var urls = HANDLERS[detected].extract();
+
 if(urls.length === 0){
   alert('No images found!');
   return;
@@ -111,47 +137,27 @@ if(urls.length === 0){
 
 var div = document.createElement('div');
 div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;border:2px solid #333;padding:30px;width:500px;max-height:80vh;overflow-y:auto;z-index:999999;box-shadow:0 4px 20px rgba(0,0,0,0.5);font-family:Arial;border-radius:8px;';
+
 div.innerHTML = '<h2 style="margin-top:0;">Found ' + urls.length + ' Images</h2>' +
   '<p style="color:#666;margin-bottom:20px;">Detected: <strong>' + siteName + '</strong> scraper</p>' +
-  '<button id="htmlBtn" style="width:100%;padding:15px;margin:10px 0;background:#007bff;color:white;border:none;border-radius:4px;cursor:pointer;font-size:16px;font-weight:bold;">📄 Download Advanced HTML Viewer</button>' +
-  '<button id="csvBtn" style="width:100%;padding:15px;margin:10px 0;background:#28a745;color:white;border:none;border-radius:4px;cursor:pointer;font-size:16px;font-weight:bold;">📊 Download CSV</button>' +
-  '<button id="copyBtn" style="width:100%;padding:15px;margin:10px 0;background:#17a2b8;color:white;border:none;border-radius:4px;cursor:pointer;font-size:16px;font-weight:bold;">📋 Copy URLs</button>' +
-  '<button id="closeBtn" style="width:100%;padding:15px;margin:10px 0;background:#dc3545;color:white;border:none;border-radius:4px;cursor:pointer;font-size:16px;font-weight:bold;">❌ Close</button>';
+  '<button id="htmlBtn" style="width:100%;padding:15px;margin:10px 0;background:#007bff;color:white;border:none;border-radius:4px;cursor:pointer;font-size:16px;font-weight:bold;">Download HTML Viewer</button>' +
+  '<button id="csvBtn" style="width:100%;padding:15px;margin:10px 0;background:#28a745;color:white;border:none;border-radius:4px;cursor:pointer;font-size:16px;font-weight:bold;">Download CSV</button>' +
+  '<button id="copyBtn" style="width:100%;padding:15px;margin:10px 0;background:#17a2b8;color:white;border:none;border-radius:4px;cursor:pointer;font-size:16px;font-weight:bold;">Copy URLs</button>' +
+  '<button id="closeBtn" style="width:100%;padding:15px;margin:10px 0;background:#dc3545;color:white;border:none;border-radius:4px;cursor:pointer;font-size:16px;font-weight:bold;">Close</button>';
+
 document.body.appendChild(div);
 
-// Test if dialog appeared
-console.log('Image Scraper: Dialog created with', urls.length, 'images');
-
 // ========================================
-// BUTTON HANDLERS
+// BUTTON: DOWNLOAD CSV
 // ========================================
-
-document.getElementById('htmlBtn').onclick = function(){
-  alert('Generating HTML viewer...');
-  
-  try {
-    var html = generateAdvancedViewer();
-    var blob = new Blob([html], {type: 'text/html'});
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = 'images_' + Date.now() + '.html';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    alert('HTML viewer downloaded!');
-  } catch(e) {
-    alert('Error: ' + e.message);
-    console.error(e);
-  }
-};
 
 document.getElementById('csvBtn').onclick = function(){
   var csv = 'Property,URL,Image Number,Image URL\r\n';
+  
   urls.forEach(function(url, i){
     csv += '"' + document.title.replace(/"/g, '""') + '","' + window.location.href + '",' + (i+1) + ',"' + url + '"\r\n';
   });
+  
   var blob = new Blob([csv], {type: 'text/csv'});
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
@@ -164,6 +170,10 @@ document.getElementById('csvBtn').onclick = function(){
   alert('CSV downloaded!');
 };
 
+// ========================================
+// BUTTON: COPY URLs
+// ========================================
+
 document.getElementById('copyBtn').onclick = function(){
   var textarea = document.createElement('textarea');
   textarea.value = urls.join('\n');
@@ -174,20 +184,29 @@ document.getElementById('copyBtn').onclick = function(){
   alert('Copied ' + urls.length + ' URLs!');
 };
 
+// ========================================
+// BUTTON: CLOSE DIALOG
+// ========================================
+
 document.getElementById('closeBtn').onclick = function(){
   document.body.removeChild(div);
 };
 
 // ========================================
-// GENERATE ADVANCED HTML VIEWER
+// BUTTON: DOWNLOAD HTML VIEWER
 // ========================================
 
-function generateAdvancedViewer(){
+document.getElementById('htmlBtn').onclick = function(){
+  alert('Generating HTML...');
+  
   var pt = (document.title || 'Property').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ');
   var pu = window.location.href;
   var hn = (window.location.hostname.replace('www.', '') || 'local');
   
+  // Start building HTML
   var h = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Images</title>';
+  
+  // Add CSS styles
   h += '<style>';
   h += '*{margin:0;padding:0;box-sizing:border-box}';
   h += 'body{font-family:Arial;padding:20px;background:#f5f5f5}';
@@ -218,16 +237,20 @@ function generateAdvancedViewer(){
   h += '.image-card img{width:100%;height:auto;border:1px solid #ddd;margin:10px 0}';
   h += '</style></head><body>';
   
+  // Add page header
   h += '<h1>Found ' + urls.length + ' Images</h1>';
   h += '<p>From: ' + hn + ' (' + siteName + ')</p>';
   
-  h += '<div class="filters"><h3>Filter Images</h3><div class="filter-row">';
+  // Add filters section
+  h += '<div class="filters"><h3>Filter Images</h3>';
+  h += '<div class="filter-row">';
   h += '<label>Min Width: <input type="number" id="minWidth" placeholder="1000"></label>';
   h += '<label>Min Height: <input type="number" id="minHeight" placeholder="800"></label>';
   h += '<button onclick="applyFilters()">Apply</button>';
   h += '<button onclick="resetFilters()">Reset</button>';
   h += '</div></div>';
   
+  // Add selection controls
   h += '<div class="selection-controls">';
   h += '<button class="select-all" onclick="selectAll()">Select All</button>';
   h += '<button class="select-none" onclick="selectNone()">Deselect All</button>';
@@ -235,37 +258,45 @@ function generateAdvancedViewer(){
   h += '<strong id="selectedCount">0 selected</strong>';
   h += '</div>';
   
+  // Add action buttons
   h += '<div class="button-group">';
   h += '<button class="download-all-btn" onclick="downloadSelected()">Download Selected</button>';
   h += '<button class="csv-btn" onclick="exportCSV()">Export CSV</button>';
   h += '</div>';
   h += '<div id="status"></div>';
   
+  // Add image gallery
   h += '<div class="image-gallery">';
-  for(var i=0; i<urls.length; i++){
-    h += '<div class="image-card" id="c'+i+'" data-index="'+i+'">';
-    h += '<div class="checkbox-wrapper"><input type="checkbox" id="ch'+i+'" onchange="updateSelection()"></div>';
-    h += '<h3>Image '+(i+1)+'</h3>';
-    h += '<div id="tb'+i+'" class="tag-badge" style="display:none"></div>';
-    h += '<div class="tag-selector"><select id="ts'+i+'" onchange="tagChange('+i+')">';
+  for(var i = 0; i < urls.length; i++){
+    h += '<div class="image-card" id="c' + i + '" data-index="' + i + '">';
+    h += '<div class="checkbox-wrapper"><input type="checkbox" id="ch' + i + '" onchange="updateSelection()"></div>';
+    h += '<h3>Image ' + (i+1) + '</h3>';
+    h += '<div id="tb' + i + '" class="tag-badge" style="display:none"></div>';
+    h += '<div class="tag-selector">';
+    h += '<select id="ts' + i + '" onchange="tagChange(' + i + ')">';
     h += '<option value="">-- Tag --</option>';
     h += '<option value="Primary Image">Primary Image</option>';
     h += '<option value="Alternate Image 1">Alternate Image 1</option>';
     h += '<option value="Alternate Image 2">Alternate Image 2</option>';
     h += '<option value="ProMap">ProMap</option>';
     h += '</select></div>';
-    h += '<img src="'+urls[i]+'" id="im'+i+'">';
+    h += '<img src="' + urls[i] + '" id="im' + i + '">';
     h += '</div>';
   }
   h += '</div>';
   
+  // Add JavaScript
   h += '<script>';
-  h += 'var imgUrls='+JSON.stringify(urls)+';';
-  h += 'var propTitle="'+pt+'";';
-  h += 'var propUrl="'+pu+'";';
+  
+  // Data variables
+  h += 'var imgUrls=' + JSON.stringify(urls) + ';';
+  h += 'var propTitle="' + pt + '";';
+  h += 'var propUrl="' + pu + '";';
   h += 'var tags={};';
   h += 'var tagMap={};';
   h += 'var deleted=new Set();';
+  
+  // Tag change function
   h += 'function tagChange(i){';
   h += 'var s=document.getElementById("ts"+i);';
   h += 'var nt=s.value;';
@@ -275,35 +306,61 @@ function generateAdvancedViewer(){
   h += 'if(tagMap[nt]!==undefined){var p=tagMap[nt];delete tags[p];document.getElementById("ts"+p).value="";document.getElementById("tb"+p).style.display="none"}';
   h += 'tags[i]=nt;tagMap[nt]=i;';
   h += 'var b=document.getElementById("tb"+i);b.textContent=nt;b.style.display="inline-block"';
-  h += '}';
-  h += '}';
+  h += '}}';
+  
+  // Apply filters function
   h += 'function applyFilters(){';
   h += 'var mw=parseInt(document.getElementById("minWidth").value)||0;';
   h += 'var mh=parseInt(document.getElementById("minHeight").value)||0;';
   h += 'document.querySelectorAll(".image-card:not(.deleted)").forEach(function(c){';
   h += 'var im=c.querySelector("img");';
-  h += 'if(im.naturalWidth>=mw&&im.naturalHeight>=mh)c.classList.remove("hidden");else c.classList.add("hidden"';
-  h += ')});updateSelection()}';
-  h += 'function resetFilters(){document.getElementById("minWidth").value="";document.getElementById("minHeight").value="";';
-  h += 'document.querySelectorAll(".image-card").forEach(function(c){c.classList.remove("hidden")});updateSelection()}';
-  h += 'function selectAll(){document.querySelectorAll(".image-card:not(.hidden):not(.deleted) input").forEach(function(cb){';
-  h += 'cb.checked=true;cb.closest(".image-card").classList.add("selected")});updateSelection()}';
-  h += 'function selectNone(){document.querySelectorAll("input[type=checkbox]").forEach(function(cb){';
-  h += 'cb.checked=false;cb.closest(".image-card").classList.remove("selected")});updateSelection()}';
+  h += 'if(im.naturalWidth>=mw&&im.naturalHeight>=mh)c.classList.remove("hidden");else c.classList.add("hidden")';
+  h += '});updateSelection()}';
+  
+  // Reset filters function
+  h += 'function resetFilters(){';
+  h += 'document.getElementById("minWidth").value="";';
+  h += 'document.getElementById("minHeight").value="";';
+  h += 'document.querySelectorAll(".image-card").forEach(function(c){c.classList.remove("hidden")});';
+  h += 'updateSelection()}';
+  
+  // Select all function
+  h += 'function selectAll(){';
+  h += 'document.querySelectorAll(".image-card:not(.hidden):not(.deleted) input").forEach(function(cb){';
+  h += 'cb.checked=true;cb.closest(".image-card").classList.add("selected")';
+  h += '});updateSelection()}';
+  
+  // Select none function
+  h += 'function selectNone(){';
+  h += 'document.querySelectorAll("input[type=checkbox]").forEach(function(cb){';
+  h += 'cb.checked=false;cb.closest(".image-card").classList.remove("selected")';
+  h += '});updateSelection()}';
+  
+  // Delete selected function
   h += 'function deleteSelected(){';
-  h += 'var sel=[];document.querySelectorAll("input[type=checkbox]:checked").forEach(function(cb){';
-  h += 'var idx=parseInt(cb.closest(".image-card").dataset.index);sel.push(idx)});';
+  h += 'var sel=[];';
+  h += 'document.querySelectorAll("input[type=checkbox]:checked").forEach(function(cb){';
+  h += 'var idx=parseInt(cb.closest(".image-card").dataset.index);sel.push(idx)';
+  h += '});';
   h += 'if(sel.length===0){alert("Select images first");return}';
   h += 'if(!confirm("Delete "+sel.length+" images?")){return}';
-  h += 'sel.forEach(function(i){deleted.add(i);document.getElementById("c"+i).classList.add("deleted")});updateSelection()}';
+  h += 'sel.forEach(function(i){deleted.add(i);document.getElementById("c"+i).classList.add("deleted")});';
+  h += 'updateSelection()}';
+  
+  // Update selection function
   h += 'function updateSelection(){';
   h += 'var cnt=document.querySelectorAll(".image-card:not(.hidden):not(.deleted) input:checked").length;';
   h += 'document.getElementById("selectedCount").textContent=cnt+" selected";';
   h += 'document.querySelectorAll(".image-card").forEach(function(c){';
-  h += 'if(c.querySelector("input").checked)c.classList.add("selected");else c.classList.remove("selected")'})}';
+  h += 'if(c.querySelector("input").checked)c.classList.add("selected");else c.classList.remove("selected")';
+  h += '})}';
+  
+  // Export CSV function
   h += 'function exportCSV(){';
-  h += 'var sel=[];document.querySelectorAll("input:checked").forEach(function(cb){';
-  h += 'sel.push(parseInt(cb.closest(".image-card").dataset.index))});';
+  h += 'var sel=[];';
+  h += 'document.querySelectorAll("input:checked").forEach(function(cb){';
+  h += 'sel.push(parseInt(cb.closest(".image-card").dataset.index))';
+  h += '});';
   h += 'if(sel.length===0){alert("Select images");return}';
   h += 'sel.sort(function(a,b){return a-b});';
   h += 'var rows=["Property,URL,Image Number,Image URL,Tag"];';
@@ -317,9 +374,13 @@ function generateAdvancedViewer(){
   h += 'var a=document.createElement("a");a.href=url;a.download="images.csv";';
   h += 'document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);';
   h += 'alert("CSV exported")}';
+  
+  // Download selected function
   h += 'function downloadSelected(){';
-  h += 'var sel=[];document.querySelectorAll("input:checked").forEach(function(cb){';
-  h += 'sel.push(parseInt(cb.closest(".image-card").dataset.index))});';
+  h += 'var sel=[];';
+  h += 'document.querySelectorAll("input:checked").forEach(function(cb){';
+  h += 'sel.push(parseInt(cb.closest(".image-card").dataset.index))';
+  h += '});';
   h += 'if(sel.length===0){alert("Select images");return}';
   h += 'sel.sort(function(a,b){return a-b});';
   h += 'var st=document.getElementById("status");';
@@ -333,9 +394,20 @@ function generateAdvancedViewer(){
   h += 'st.textContent="Downloading "+(ni+1)+"/"+sel.length';
   h += '},ni*300)});';
   h += 'setTimeout(function(){st.textContent="Check Downloads folder!"},sel.length*300+500)}';
-  h += '</script></body></html>';
   
-  return h;
-}
+  h += '<\/script></body></html>';
+  
+  // Download the HTML file
+  var blob = new Blob([h], {type: 'text/html'});
+  var blobUrl = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = 'images_' + Date.now() + '.html';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(blobUrl);
+  alert('HTML viewer downloaded!');
+};
 
 })();

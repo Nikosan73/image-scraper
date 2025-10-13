@@ -149,9 +149,6 @@ document.getElementById('generateBtn').onclick = function(){
   function generateHTML(){
     var output = '';
     
-    // TAG NAME MAPPING - Maps short codes to full names for CSV export
-    output += 'var TAG_NAMES={"Primary Image":"Primary Image","Alternate Image 1":"Alternate Image 1","Alternate Image 2":"Alternate Image 2","ProMap":"ProMap","Brochure":"Brochure"};';
-    
     output += '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Image & PDF Manager</title>';
     output += '<style>';
     output += '*{margin:0;padding:0;box-sizing:border-box}';
@@ -335,7 +332,7 @@ document.getElementById('generateBtn').onclick = function(){
     output += 'csv+="\\""+propTitle+"\\",\\""+propUrl+"\\",Image,"+(num+1)+",\\""+img.url+"\\","+img.mp+",\\""+tag+"\\"\\n";';
     output += '});';
     output += 'selectedPDFs.forEach(function(pdf,num){';
-    output += 'csv+="\\""+propTitle+"\\",\\""+propUrl+"\\",PDF,"+(num+1)+",\\""+pdf.url+"\\",\\"\\",'+ '"\\""+pdf.tag+"\\"\\n";';
+    output += 'csv+="\\""+propTitle+"\\",\\""+propUrl+"\\",PDF,"+(num+1)+",\\""+pdf.url+"\\",\\"\\",\\""+pdf.tag+"\\"\\n";';
     output += '});';
     output += 'var blob=new Blob([csv],{type:"text/csv"});';
     output += 'var link=document.createElement("a");';

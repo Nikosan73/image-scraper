@@ -1,7 +1,7 @@
 (function(){
 
 // VERSION
-var VERSION = 'v2.1.0';
+var VERSION = 'v2.1.1';
 
 // SITE HANDLERS
 var HANDLERS = {
@@ -199,7 +199,7 @@ document.getElementById('generateBtn').onclick = function(){
         output += '<label for="pdf'+p+'">'+pdfText+'</label>';
         output += '<select class="pdf-tag-select" data-pdfid="'+p+'" onchange="pdfTagChanged('+p+',this.value)">';
         output += '<option value="">No Tag</option>';
-        output += '<option value="Brochure">Brochure</option>';
+        output += '<option value="Marketing Brochure">Marketing Brochure</option>';
         output += '</select>';
         output += '</div>';
       }
@@ -303,11 +303,11 @@ document.getElementById('generateBtn').onclick = function(){
     output += '}';
     
     output += 'function pdfTagChanged(pdfId,value){';
-    output += 'if(value==="Brochure"){';
-    output += 'for(var i in pdfTags){if(pdfTags[i]==="Brochure"&&i!=pdfId)pdfTags[i]="";}';
+    output += 'if(value==="Marketing Brochure"){';
+    output += 'for(var i in pdfTags){if(pdfTags[i]==="Marketing Brochure"&&i!=pdfId)pdfTags[i]="";}';
     output += 'document.querySelectorAll(".pdf-tag-select").forEach(function(sel){';
     output += 'var id=sel.dataset.pdfid;';
-    output += 'if(id!=pdfId&&sel.value==="Brochure")sel.value="";';
+    output += 'if(id!=pdfId&&sel.value==="Marketing Brochure")sel.value="";';
     output += '});';
     output += '}';
     output += 'pdfTags[pdfId]=value;';

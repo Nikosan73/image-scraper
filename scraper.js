@@ -89,47 +89,80 @@ var HANDLERS={
   email:{
     name:'Email (HTML)',
     detect:function(){
-      return document.querySelector('meta[name="generator"][content*="Mail"]') || 
-             document.querySelector('div[id*="mail"]') ||
-             window.location.hostname.includes('mail.google.com');
+      return!!document.querySelector('img[src^="data:image"]')||
+        document.body.innerHTML.includes('cid:')||
+        !!document.querySelector('meta[name="Generator"][content*="Microsoft"]')||
+        !!document.querySelector('meta[name="ProgId"][content*="Word"]');
     },
     extract:function(){
       var u=[];
-      document.querySelectorAll('img[src]').forEach(function(img){
+      document.querySelectorAll('img').forEach(function(img){
         var src=img.src;
-        if(src && src.startsWith('http') && !u.includes(src)) u.push(src);
+        if(src&&(src.startsWith('data:image')||src.includes('cid:'))){
+          if(!u.includes(src))u.push(src);
+        }
+      });
+      return u;
+    }
+  },
+  generic:{
+    name:'Generic',
+    detect:function(){return true},
+    extract:function(){
+      var u=[];
+      var seen={};
+      document.querySelectorAll('img').forEach(function(img){
+        var src=img.src;
+        var srcset=img.srcset;
+        if(srcset){
+          var matches=srcset.match(/https?:\/\/[^\s]+/g);
+          if(matches){
+            var urls=[];
+            matches.forEach(function(url){
+              var widthMatch=srcset.match(new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s+(\\d+)w'));
+              if(widthMatch){
+                urls.push({url:url,width:parseInt(widthMatch[1])});
+              }else{
+                urls.push({url:url,width:0});
+              }
+            });
+            urls.sort(function(a,b){return b.width-a.width});
+            if(urls[0]&&!seen[urls[0].url]){
+              u.push(urls[0].url);
+              seen[urls[0].url]=true;
+            }
+          }
+        }else if(src&&src.startsWith('http')&&!seen[src]){
+          u.push(src);
+          seen[src]=true;
+        }
+      });
+      document.querySelectorAll('[style*="background-image"]').forEach(function(el){
+        var style=el.getAttribute('style');
+        var m=style.match(/url\(['"]?([^'"()]+)['"]?\)/);
+        if(m&&m[1].startsWith('http')&&!seen[m[1]]){
+          u.push(m[1]);
+          seen[m[1]]=true;
+        }
       });
       return u;
     }
   }
 };
 
-function extractGeneric(){
-  var u=[];
-  document.querySelectorAll('img[src], img[data-src], a[href]').forEach(function(el){
-    if(el.tagName==='IMG'){
-      var src=el.dataset.src || el.src;
-      if(src && src.startsWith('http') && !u.includes(src)) u.push(src);
-    }
-    else if(el.tagName==='A'){
-      var href=el.href;
-      if(href && /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(href) && !u.includes(href)) u.push(href);
-    }
-  });
-  return u;
-}
-
 function extractPDFs(){
   var pdfs=[];
-  document.querySelectorAll('a[href]').forEach(function(a){
+  var seen={};
+  
+  document.querySelectorAll('a[href$=".pdf"], a[href*=".pdf?"], a[href*=".pdf#"]').forEach(function(a){
     var href=a.href;
-    if(href && /\.pdf(\?|$)/i.test(href)){
-      var text=a.textContent.trim() || a.title || 'PDF Document';
-      if(!pdfs.some(function(p){return p.url===href})){
-        pdfs.push({url:href,name:text});
-      }
+    if(href&&!seen[href]){
+      var text=a.textContent.trim()||a.title||'PDF Document';
+      pdfs.push({url:href,name:text});
+      seen[href]=true;
     }
   });
+  
   return pdfs;
 }
 
@@ -141,278 +174,316 @@ for(var key in HANDLERS){
   }
 }
 
-var images=handler ? handler.extract() : extractGeneric();
-var pdfs=extractPDFs();
-
-if(images.length===0 && pdfs.length===0){
-  alert('No images or PDFs found on this page!');
+if(!handler){
+  alert('No handler found for this site');
   return;
 }
 
-var propTitle=document.title || 'Property';
-var propUrl=window.location.href;
+var urls=handler.extract();
+var pdfs=extractPDFs();
 
-var currentIndex=0;
-var imageQueue=[];
+if(urls.length===0&&pdfs.length===0){
+  alert('No images or PDFs found on this page.\n\nScraper: '+handler.name+'\nVersion: '+VERSION);
+  return;
+}
 
-function processNext(){
-  if(currentIndex>=images.length){
+var div=document.createElement('div');
+div.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:30px;border:2px solid #333;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:999999;font-family:Arial,sans-serif;max-width:500px';
+
+var info='<div style="text-align:center">';
+info+='<h2 style="margin:0 0 15px 0;color:#333">Images & PDFs Found</h2>';
+info+='<p style="margin:10px 0;font-size:16px;color:#666"><strong>Images:</strong> '+urls.length+'</p>';
+info+='<p style="margin:10px 0;font-size:16px;color:#666"><strong>PDFs:</strong> '+pdfs.length+'</p>';
+info+='<p style="margin:10px 0;font-size:14px;color:#999">Scraper: '+handler.name+'</p>';
+info+='<p style="margin:10px 0;font-size:12px;color:#999">Version: '+VERSION+'</p>';
+info+='<div style="margin-top:20px">';
+info+='<button id="downloadBtn" style="background:#4CAF50;color:white;border:none;padding:12px 24px;font-size:16px;border-radius:5px;cursor:pointer;margin:5px">Generate HTML</button>';
+info+='<button id="closeBtn" style="background:#f44336;color:white;border:none;padding:12px 24px;font-size:16px;border-radius:5px;cursor:pointer;margin:5px">Close</button>';
+info+='</div></div>';
+
+div.innerHTML=info;
+document.body.appendChild(div);
+
+document.getElementById('downloadBtn').onclick=function(){
+  this.disabled=true;
+  this.textContent='Processing...';
+  
+  var imageData=[];
+  var processed=0;
+  
+  function processNext(){
+    if(processed>=urls.length){
+      generateHTML();
+      return;
+    }
+    
+    var img=new Image();
+    var url=urls[processed];
+    
+    img.onload=function(){
+      var mp=(this.naturalWidth*this.naturalHeight/1000000).toFixed(2);
+      imageData.push({
+        url:url,
+        width:this.naturalWidth,
+        height:this.naturalHeight,
+        mp:parseFloat(mp)
+      });
+      processed++;
+      document.getElementById('downloadBtn').textContent='Processing '+processed+'/'+urls.length+'...';
+      processNext();
+    };
+    
+    img.onerror=function(){
+      imageData.push({
+        url:url,
+        width:0,
+        height:0,
+        mp:0
+      });
+      processed++;
+      document.getElementById('downloadBtn').textContent='Processing '+processed+'/'+urls.length+'...';
+      processNext();
+    };
+    
+    img.src=url;
+  }
+  
+  function generateHTML(){
+    var propTitle=document.title.replace(/[<>]/g,'');
+    var propUrl=window.location.href;
+    
     var output='<!DOCTYPE html><html><head><meta charset="UTF-8">';
-    output+='<title>'+propTitle+'</title>';
+    output+='<title>Images & PDFs - '+propTitle+'</title>';
     output+='<style>';
-    output+='*{box-sizing:border-box;margin:0;padding:0;}';
-    output+='body{font-family:Arial,sans-serif;padding:20px;background:#f5f5f5;}';
-    output+='.header{background:#2c3e50;color:#fff;padding:20px;border-radius:8px;margin-bottom:20px;}';
-    output+='.header h1{font-size:20px;margin-bottom:8px;}';
-    output+='.header .url{font-size:12px;color:#ecf0f1;word-break:break-all;}';
-    output+='.controls{background:#fff;padding:15px;border-radius:8px;margin-bottom:20px;box-shadow:0 2px 4px rgba(0,0,0,0.1);}';
-    output+='.controls label{font-weight:bold;margin-right:10px;}';
-    output+='.controls input{padding:5px;margin-right:15px;width:80px;}';
-    output+='.controls button{padding:8px 15px;background:#3498db;color:#fff;border:none;border-radius:4px;cursor:pointer;margin-right:10px;}';
-    output+='.controls button:hover{background:#2980b9;}';
-    output+='.controls button:disabled{background:#95a5a6;cursor:not-allowed;}';
-    output+='.stats{margin:15px 0;padding:10px;background:#ecf0f1;border-radius:4px;}';
-    output+='.pdf-section{background:#e3f2fd;padding:15px;border-radius:8px;margin-bottom:20px;}';
-    output+='.pdf-section h2{color:#1976d2;margin-bottom:15px;font-size:16px;}';
-    output+='.pdf-item{background:#fff;padding:12px;margin-bottom:10px;border-radius:4px;display:flex;align-items:center;gap:10px;}';
-    output+='.pdf-item input[type="checkbox"]{width:20px;height:20px;cursor:pointer;}';
-    output+='.pdf-item a{flex:1;color:#1976d2;text-decoration:none;font-weight:500;}';
-    output+='.pdf-item a:hover{text-decoration:underline;}';
-    output+='.pdf-tag-select{padding:5px;border:1px solid #ccc;border-radius:4px;font-size:13px;}';
-    output+='.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:15px;}';
-    output+='.card{background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,0.1);position:relative;}';
-    output+='.card.deleted{display:none;}';
-    output+='.card img{width:100%;height:200px;object-fit:cover;cursor:pointer;display:block;}';
-    output+='.card img:hover{opacity:0.8;}';
-    output+='.card-body{padding:12px;}';
-    output+='.card-info{font-size:11px;color:#7f8c8d;margin-bottom:8px;}';
-    output+='.card-controls{display:flex;align-items:center;gap:8px;margin-bottom:8px;}';
-    output+='.card-controls input[type="checkbox"]{width:18px;height:18px;cursor:pointer;}';
-    output+='.card-controls select{flex:1;padding:5px;border:1px solid #ddd;border-radius:4px;font-size:12px;}';
-    output+='.card-actions{display:flex;gap:5px;}';
-    output+='.card-actions button{flex:1;padding:6px;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:bold;}';
-    output+='.btn-view{background:#3498db;color:#fff;}';
-    output+='.btn-view:hover{background:#2980b9;}';
-    output+='.btn-delete{background:#e74c3c;color:#fff;}';
-    output+='.btn-delete:hover{background:#c0392b;}';
+    output+='*{box-sizing:border-box}';
+    output+='body{font-family:Arial,sans-serif;margin:20px;background:#f5f5f5}';
+    output+='.header{background:white;padding:20px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}';
+    output+='.header h1{margin:0 0 10px 0;color:#333}';
+    output+='.header p{margin:5px 0;color:#666}';
+    output+='.pdf-section{background:#e3f2fd;padding:20px;margin-bottom:20px;border-radius:8px;border-left:4px solid #2196F3}';
+    output+='.pdf-section h2{margin:0 0 15px 0;color:#1976D2}';
+    output+='.pdf-item{padding:10px;margin:10px 0;background:white;border-radius:4px;display:flex;align-items:center;gap:10px}';
+    output+='.pdf-item input{width:18px;height:18px;cursor:pointer}';
+    output+='.pdf-item a{color:#2196F3;text-decoration:none;flex:1}';
+    output+='.pdf-item a:hover{text-decoration:underline}';
+    output+='.pdf-tag-select{padding:5px;border:1px solid #ddd;border-radius:3px;background:white}';
+    output+='.filters{background:white;padding:20px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}';
+    output+='.filters h2{margin:0 0 15px 0;color:#333}';
+    output+='.filter-group{margin:10px 0}';
+    output+='.filter-group label{display:inline-block;width:100px;font-weight:bold}';
+    output+='.filter-group input{padding:5px;border:1px solid #ddd;border-radius:3px;width:100px}';
+    output+='.filter-group button{margin-left:10px;padding:8px 16px;background:#4CAF50;color:white;border:none;border-radius:4px;cursor:pointer}';
+    output+='.filter-group button:hover{background:#45a049}';
+    output+='.controls{background:white;padding:15px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1);display:flex;gap:10px;flex-wrap:wrap}';
+    output+='.controls button{padding:10px 20px;border:none;border-radius:4px;cursor:pointer;font-size:14px}';
+    output+='.btn-select{background:#2196F3;color:white}';
+    output+='.btn-deselect{background:#FF9800;color:white}';
+    output+='.btn-delete{background:#f44336;color:white}';
+    output+='.btn-export{background:#4CAF50;color:white}';
+    output+='.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:20px}';
+    output+='.card{background:white;border:2px solid #ddd;border-radius:8px;overflow:hidden;transition:all 0.3s}';
+    output+='.card:hover{transform:translateY(-5px);box-shadow:0 4px 12px rgba(0,0,0,0.15)}';
+    output+='.card.selected{border-color:#4CAF50;box-shadow:0 0 10px rgba(76,175,80,0.5)}';
+    output+='.card.deleted{display:none}';
+    output+='.card.error{opacity:0.5;background:#f5f5f5}';
+    output+='.img-wrapper{position:relative;padding-top:75%;background:#f9f9f9;overflow:hidden}';
+    output+='.img-wrapper img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain}';
+    output+='.card-info{padding:12px}';
+    output+='.card-info div{margin:5px 0;font-size:12px;color:#666}';
+    output+='.checkbox-container{text-align:center;padding:10px;border-top:1px solid #eee}';
+    output+='.checkbox-container input{width:20px;height:20px;cursor:pointer}';
+    output+='.tag-container{padding:10px;border-top:1px solid #eee}';
+    output+='.tag-select{width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:12px;cursor:pointer}';
+    output+='.download-btn{display:block;width:100%;padding:10px;background:#2196F3;color:white;text-align:center;text-decoration:none;border:none;cursor:pointer;font-size:14px}';
+    output+='.download-btn:hover{background:#1976D2}';
     output+='</style></head><body>';
-
+    
     output+='<div class="header">';
-    output+='<h1>Image & PDF Manager '+VERSION;
-    if(handler) output+=' ('+handler.name+')';
-    output+='</h1>';
-    output+='<div class="url">'+propUrl+'</div>';
+    output+='<h1>'+propTitle+'</h1>';
+    output+='<p><strong>URL:</strong> <a href="'+propUrl+'" target="_blank">'+propUrl+'</a></p>';
+    output+='<p><strong>Images Found:</strong> '+imageData.length+'</p>';
+    output+='<p><strong>PDFs Found:</strong> '+pdfs.length+'</p>';
     output+='</div>';
-
-    output+='<div class="controls">';
-    output+='<label>Min Width:</label><input type="number" id="minW" value="800">';
-    output+='<label>Min Height:</label><input type="number" id="minH" value="600">';
-    output+='<button onclick="applyFilter()">Apply Filter</button>';
-    output+='<button onclick="downloadSelected()" id="dlBtn" disabled>Download Selected</button>';
-    output+='<button onclick="exportCSV()" id="csvBtn" disabled>Export CSV</button>';
-    output+='</div>';
-
+    
     if(pdfs.length>0){
       output+='<div class="pdf-section">';
-      output+='<h2>PDFs Found ('+pdfs.length+')</h2>';
+      output+='<h2>📄 PDF Documents</h2>';
       pdfs.forEach(function(pdf,i){
         output+='<div class="pdf-item">';
-        output+='<input type="checkbox" class="pdf-check" id="pdf'+i+'">';
-        output+='<a href="'+pdf.url+'" target="_blank" id="pdflink'+i+'">'+pdf.name+'</a>';
+        output+='<input type="checkbox" id="pdf'+i+'" checked>';
+        output+='<a href="'+pdf.url+'" target="_blank">'+pdf.name+'</a>';
         output+='<select class="pdf-tag-select" data-pdfid="'+i+'" onchange="pdfTagChanged('+i+',this.value)">';
         output+='<option value="">No Tag</option>';
-        output+='<option value="Floorplan">Floorplan</option>';
-        output+='<option value="EPC">EPC</option>';
-        output+='<option value="Title Plan">Title Plan</option>';
         output+='<option value="Marketing Brochure">Marketing Brochure</option>';
-        output+='<option value="Other">Other</option>';
         output+='</select>';
         output+='</div>';
       });
       output+='</div>';
     }
-
-    output+='<div class="stats" id="stats">Loading images...</div>';
-    output+='<div class="grid" id="grid"></div>';
-
+    
+    output+='<div class="filters">';
+    output+='<h2>Filters</h2>';
+    output+='<div class="filter-group">';
+    output+='<label>Min MP:</label><input type="number" id="minMP" value="0.8" step="0.1">';
+    output+='<label style="margin-left:20px">Max MP:</label><input type="number" id="maxMP" value="50" step="0.1">';
+    output+='<button onclick="applyFilters()">Apply Filters</button>';
+    output+='</div>';
+    output+='</div>';
+    
+    output+='<div class="controls">';
+    output+='<button class="btn-select" onclick="selectAll()">✓ Select All</button>';
+    output+='<button class="btn-deselect" onclick="deselectAll()">✗ Deselect All</button>';
+    output+='<button class="btn-delete" onclick="deleteSelected()">🗑 Delete Selected</button>';
+    output+='<button class="btn-export" onclick="exportCSV()">📊 Export CSV</button>';
+    output+='</div>';
+    
+    output+='<div class="gallery" id="gallery">';
+    imageData.forEach(function(img,idx){
+      var errorClass=img.width===0?' error':'';
+      output+='<div class="card'+errorClass+'" data-idx="'+idx+'" data-mp="'+img.mp+'">';
+      output+='<div class="img-wrapper">';
+      if(img.width>0){
+        output+='<img src="'+img.url+'" alt="Image '+(idx+1)+'">';
+      }else{
+        output+='<div style="padding:20px;text-align:center;color:#999">Failed to load</div>';
+      }
+      output+='</div>';
+      output+='<div class="card-info">';
+      output+='<div><strong>Image #'+(idx+1)+'</strong></div>';
+      if(img.width>0){
+        output+='<div>'+img.width+' × '+img.height+' px</div>';
+        output+='<div>'+img.mp+' MP</div>';
+      }
+      output+='</div>';
+      output+='<div class="tag-container">';
+      output+='<select class="tag-select" data-idx="'+idx+'" onchange="tagChanged('+idx+',this.value)">';
+      output+='<option value="">No Tag</option>';
+      output+='<option value="Primary Image">Primary Image</option>';
+      output+='<option value="Alternate Image 1">Alternate Image 1</option>';
+      output+='<option value="Alternate Image 2">Alternate Image 2</option>';
+      output+='<option value="ProMap">ProMap</option>';
+      output+='</select>';
+      output+='</div>';
+      output+='<div class="checkbox-container">';
+      output+='<input type="checkbox" data-idx="'+idx+'">';
+      output+='</div>';
+      output+='<a href="'+img.url+'" download="Image_'+(idx+1)+'.jpg" class="download-btn">⬇ Download</a>';
+      output+='</div>';
+    });
+    output+='</div>';
+    
     output+='<script>';
-    output+='var propTitle="'+propTitle.replace(/"/g,'\\"')+'";';
-    output+='var propUrl="'+propUrl+'";';
-    output+='var images='+JSON.stringify(images)+';';
-    output+='var imageData=[];';
-    output+='var loaded=0;';
+    output+='var imageData='+JSON.stringify(imageData)+';';
     output+='var tags={};';
     output+='var pdfTags={};';
-    output+='var minW=800;';
-    output+='var minH=600;';
-
-    output+='function pdfTagChanged(pdfId,value){';
-    output+='if(value==="Floorplan" || value==="EPC" || value==="Marketing Brochure"){';
-    output+='for(var i in pdfTags){if(pdfTags[i]===value && i!=pdfId)pdfTags[i]="";}';
-    output+='document.querySelectorAll(".pdf-tag-select").forEach(function(sel){';
-    output+='var id=sel.dataset.pdfid;';
-    output+='if(id!=pdfId && sel.value===value)sel.value="";';
+    output+='var propTitle="'+propTitle.replace(/"/g,'\\"')+'";';
+    output+='var propUrl="'+propUrl+'";';
+    
+    output+='function applyFilters(){';
+    output+='var minMP=parseFloat(document.getElementById("minMP").value)||0;';
+    output+='var maxMP=parseFloat(document.getElementById("maxMP").value)||999;';
+    output+='document.querySelectorAll(".card").forEach(function(card){';
+    output+='var mp=parseFloat(card.dataset.mp);';
+    output+='if(mp>=minMP&&mp<=maxMP){';
+    output+='card.style.display="block";';
+    output+='}else{';
+    output+='card.style.display="none";';
+    output+='card.querySelector("input[type=checkbox]").checked=false;';
+    output+='}';
     output+='});';
-    output+='var cb=document.getElementById("pdf"+pdfId);';
-    output+='if(cb)cb.checked=true;';
     output+='}';
-    output+='pdfTags[pdfId]=value;';
-    output+='updateButtons();';
+    
+    output+='function selectAll(){';
+    output+='document.querySelectorAll(".card:not(.deleted)").forEach(function(card){';
+    output+='if(card.style.display!=="none"){';
+    output+='card.querySelector("input[type=checkbox]").checked=true;';
+    output+='card.classList.add("selected");';
     output+='}';
-
-    output+='function updateButtons(){';
-    output+='var anyChecked=document.querySelectorAll(".card:not(.deleted) input:checked, .pdf-check:checked").length>0;';
-    output+='document.getElementById("dlBtn").disabled=!anyChecked;';
-    output+='document.getElementById("csvBtn").disabled=!anyChecked;';
+    output+='});';
     output+='}';
-
+    
+    output+='function deselectAll(){';
+    output+='document.querySelectorAll(".card input[type=checkbox]").forEach(function(cb){';
+    output+='cb.checked=false;';
+    output+='cb.closest(".card").classList.remove("selected");';
+    output+='});';
+    output+='}';
+    
+    output+='function deleteSelected(){';
+    output+='var count=0;';
+    output+='document.querySelectorAll(".card input[type=checkbox]:checked").forEach(function(cb){';
+    output+='cb.closest(".card").classList.add("deleted");';
+    output+='count++;';
+    output+='});';
+    output+='alert("Deleted "+count+" image(s)");';
+    output+='}';
+    
     output+='function tagChanged(idx,value){';
-    output+='if(value==="Floorplan" || value==="EPC"){';
-    output+='for(var i in tags){if(tags[i]===value && i!=idx)tags[i]="";}';
-    output+='document.querySelectorAll(".img-tag-select").forEach(function(sel){';
-    output+='var id=parseInt(sel.dataset.imgid);';
-    output+='if(id!==idx && sel.value===value)sel.value="";';
-    output+='});';
-    output+='for(var i in pdfTags){if(pdfTags[i]===value)pdfTags[i]="";}';
-    output+='document.querySelectorAll(".pdf-tag-select").forEach(function(sel){';
-    output+='if(sel.value===value)sel.value="";';
-    output+='});';
-    output+='var cb=document.querySelector(".card[data-idx=\\""+idx+"\\"] input");';
-    output+='if(cb)cb.checked=true;';
+    output+='if(value){';
+    output+='for(var i in tags){';
+    output+='if(tags[i]===value&&i!=idx){';
+    output+='tags[i]="";';
+    output+='document.querySelector(".tag-select[data-idx=\\""+i+"\\"]").value="";';
+    output+='}';
+    output+='}';
     output+='}';
     output+='tags[idx]=value;';
-    output+='updateButtons();';
     output+='}';
-
-    output+='images.forEach(function(url,idx){';
-    output+='var img=new Image();';
-    output+='img.crossOrigin="anonymous";';
-    output+='img.onload=function(){';
-    output+='loaded++;';
-    output+='imageData.push({idx:idx,url:url,w:img.naturalWidth,h:img.naturalHeight,mp:(img.naturalWidth*img.naturalHeight/1000000).toFixed(2)});';
-    output+='if(loaded===images.length)renderImages();';
-    output+='};';
-    output+='img.onerror=function(){loaded++;if(loaded===images.length)renderImages();};';
-    output+='img.src=url;';
-    output+='});';
-
-    output+='function renderImages(){';
-    output+='var filtered=imageData.filter(function(img){return img.w>=minW && img.h>=minH;});';
-    output+='document.getElementById("stats").textContent="Showing "+filtered.length+" of "+imageData.length+" images";';
-    output+='var grid=document.getElementById("grid");';
-    output+='grid.innerHTML="";';
-    output+='if(filtered.length===0){grid.innerHTML="<p>No images match filter</p>";return;}';
-    output+='filtered.forEach(function(img){';
-    output+='var card=document.createElement("div");';
-    output+='card.className="card";';
-    output+='card.dataset.idx=img.idx;';
-    output+='var imgEl=document.createElement("img");';
-    output+='imgEl.src=img.url;';
-    output+='imgEl.onclick=function(){window.open(img.url,"_blank");};';
-    output+='card.appendChild(imgEl);';
-    output+='var body=document.createElement("div");';
-    output+='body.className="card-body";';
-    output+='var info=document.createElement("div");';
-    output+='info.className="card-info";';
-    output+='info.textContent=img.w+"x"+img.h+" ("+img.mp+"MP)";';
-    output+='body.appendChild(info);';
-    output+='var controls=document.createElement("div");';
-    output+='controls.className="card-controls";';
-    output+='var cb=document.createElement("input");';
-    output+='cb.type="checkbox";';
-    output+='cb.onchange=updateButtons;';
-    output+='controls.appendChild(cb);';
-    output+='var sel=document.createElement("select");';
-    output+='sel.className="img-tag-select";';
-    output+='sel.dataset.imgid=img.idx;';
-    output+='sel.innerHTML="<option value=\\"\\">No Tag</option><option value=\\"External\\">External</option><option value=\\"Internal\\">Internal</option><option value=\\"Floorplan\\">Floorplan</option><option value=\\"EPC\\">EPC</option><option value=\\"Map\\">Map</option><option value=\\"Other\\">Other</option>";';
-    output+='sel.value=tags[img.idx]||"";';
-    output+='sel.onchange=function(){tagChanged(img.idx,this.value);};';
-    output+='controls.appendChild(sel);';
-    output+='body.appendChild(controls);';
-    output+='var actions=document.createElement("div");';
-    output+='actions.className="card-actions";';
-    output+='var btnView=document.createElement("button");';
-    output+='btnView.className="btn-view";';
-    output+='btnView.textContent="View";';
-    output+='btnView.onclick=function(){window.open(img.url,"_blank");};';
-    output+='actions.appendChild(btnView);';
-    output+='var btnDel=document.createElement("button");';
-    output+='btnDel.className="btn-delete";';
-    output+='btnDel.textContent="Delete";';
-    output+='btnDel.onclick=function(){card.classList.add("deleted");updateButtons();};';
-    output+='actions.appendChild(btnDel);';
-    output+='body.appendChild(actions);';
-    output+='card.appendChild(body);';
-    output+='grid.appendChild(card);';
+    
+    output+='function pdfTagChanged(pdfId,value){';
+    output+='if(value==="Marketing Brochure"){';
+    output+='for(var i in pdfTags){if(pdfTags[i]==="Marketing Brochure"&&i!=pdfId)pdfTags[i]="";}';
+    output+='document.querySelectorAll(".pdf-tag-select").forEach(function(sel){';
+    output+='var id=sel.dataset.pdfid;';
+    output+='if(id!=pdfId&&sel.value==="Marketing Brochure")sel.value="";';
     output+='});';
     output+='}';
-
-    output+='function applyFilter(){';
-    output+='minW=parseInt(document.getElementById("minW").value)||0;';
-    output+='minH=parseInt(document.getElementById("minH").value)||0;';
-    output+='renderImages();';
+    output+='pdfTags[pdfId]=value;';
     output+='}';
-
-    output+='function downloadSelected(){';
-    output+='var selected=[];';
-    output+='document.querySelectorAll(".card:not(.deleted) input:checked").forEach(function(cb){';
-    output+='selected.push(parseInt(cb.closest(".card").dataset.idx));';
-    output+='});';
-    output+='document.querySelectorAll(".pdf-check:checked").forEach(function(cb){';
-    output+='var id=cb.id.replace("pdf","");';
-    output+='var link=document.getElementById("pdflink"+id);';
-    output+='if(link)selected.push(link.href);';
-    output+='});';
-    output+='if(selected.length===0){alert("Select at least one item");return;}';
-    output+='selected.forEach(function(item){';
-    output+='var a=document.createElement("a");';
-    output+='if(typeof item==="number"){';
-    output+='a.href=imageData.find(function(img){return img.idx===item;}).url;';
-    output+='}else{a.href=item;}';
-    output+='a.download="";';
-    output+='a.target="_blank";';
-    output+='document.body.appendChild(a);';
-    output+='a.click();';
-    output+='document.body.removeChild(a);';
-    output+='});';
+    
+    output+='document.querySelectorAll(".card input[type=checkbox]").forEach(function(cb){';
+    output+='cb.addEventListener("change",function(){';
+    output+='if(this.checked){';
+    output+='this.closest(".card").classList.add("selected");';
+    output+='}else{';
+    output+='this.closest(".card").classList.remove("selected");';
     output+='}';
-
+    output+='});';
+    output+='});';
+    
     output+='function exportCSV(){';
-    output+='var selected=[];';
-    output+='var selectedPDFs=[];';
-    output+='document.querySelectorAll(".card:not(.deleted) input:checked").forEach(function(cb){';
-    output+='selected.push(parseInt(cb.closest(".card").dataset.idx));';
+    output+='var selectedImages=[];';
+    output+='document.querySelectorAll(".card:not(.deleted) input[type=checkbox]:checked").forEach(function(cb){';
+    output+='selectedImages.push(parseInt(cb.dataset.idx));';
     output+='});';
-    output+='document.querySelectorAll(".pdf-check:checked").forEach(function(cb){';
-    output+='var idx=cb.id.replace("pdf","");';
-    output+='var url=document.getElementById("pdflink"+idx).href;';
-    output+='var name=document.getElementById("pdflink"+idx).textContent;';
+    output+='var selectedPDFs=[];';
+    output+='document.querySelectorAll(".pdf-item input:checked").forEach(function(cb){';
+    output+='var idx=parseInt(cb.id.replace("pdf",""));';
+    output+='var url=cb.nextElementSibling.href;';
+    output+='var name=cb.nextElementSibling.textContent;';
     output+='var tag=pdfTags[idx]||"";';
     output+='selectedPDFs.push({url:url,name:name,tag:tag});';
     output+='});';
-    output+='if(selected.length===0 && selectedPDFs.length===0){alert("Select at least one item");return;}';
-    output+='selected.sort(function(a,b){return a-b;});';
+    output+='if(selectedImages.length===0&&selectedPDFs.length===0){alert("Please select at least one image or PDF");return;}';
+    output+='selectedImages.sort(function(a,b){return a-b;});';
     output+='var csv="Property,URL,Type,Image Number,Image URL,Megapixels,Tag\\n";';
-    output+='selected.forEach(function(idx,num){';
-    output+='var img=imageData.find(function(i){return i.idx===idx;});';
-    output+='if(img){';
+    output+='selectedImages.forEach(function(idx,num){';
+    output+='var img=imageData[idx];';
     output+='var tag=tags[idx]||"";';
     output+='csv+="\\""+propTitle+"\\",\\""+propUrl+"\\",Image,"+(num+1)+",\\""+img.url+"\\","+img.mp+",\\""+tag+"\\"\\n";';
-    output+='}';
     output+='});';
     output+='selectedPDFs.forEach(function(pdf,num){';
-    output+='csv+="\\""+propTitle+"\\",\\""+propUrl+"\\",PDF,"+(num+1)+",\\""+pdf.url+"\\",\\"\\",\\""+pdf.tag+"\\"\\n";';
+    output+='csv+="\\""+propTitle+"\\",\\""+propUrl+"\\",PDF,"+(num+1)+",\\""+pdf.url+"\\",N/A,\\""+pdf.tag+"\\"\\n";';
     output+='});';
     output+='var blob=new Blob([csv],{type:"text/csv"});';
     output+='var link=document.createElement("a");';
     output+='link.href=URL.createObjectURL(blob);';
-    output+='link.download="property_data_"+Date.now()+".csv";';
+    output+='link.download="images_pdfs_"+Date.now()+".csv";';
     output+='link.click();';
     output+='}';
-
+    
     output+='</script></body></html>';
-
+    
     var blob=new Blob([output],{type:'text/html'});
     var url=URL.createObjectURL(blob);
     var a=document.createElement('a');
@@ -422,28 +493,10 @@ function processNext(){
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-
-    alert('HTML file downloaded!\n\nOpen it to manage images and PDFs.');
+    
+    alert('HTML file downloaded!\n\nOpen it to view, filter, tag, and export images & PDFs.');
     document.body.removeChild(div);
   }
-  
-  processNext();
-};
-
-var div=document.createElement('div');
-div.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:30px;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:999999;min-width:300px;font-family:Arial,sans-serif;';
-div.innerHTML='<h2 style="margin:0 0 15px 0;font-size:18px;color:#2c3e50;">Image & PDF Scraper '+VERSION+'</h2>';
-div.innerHTML+='<p style="margin-bottom:15px;color:#7f8c8d;">Found '+images.length+' images and '+pdfs.length+' PDFs</p>';
-div.innerHTML+='<p style="margin-bottom:20px;color:#555;">Click Continue to download the manager.</p>';
-div.innerHTML+='<div style="display:flex;gap:10px;"><button id="continueBtn" style="flex:1;padding:10px 20px;background:#27ae60;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:bold;font-size:14px;">Continue</button>';
-div.innerHTML+='<button id="closeBtn" style="flex:1;padding:10px 20px;background:#e74c3c;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:bold;font-size:14px;">Cancel</button></div>';
-document.body.appendChild(div);
-
-document.getElementById('continueBtn').onclick=function(){
-  div.innerHTML='<p style="text-align:center;color:#555;">Generating file...</p>';
-  setTimeout(function(){
-    document.body.removeChild(div);
-  },500);
   
   processNext();
 };

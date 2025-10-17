@@ -436,10 +436,9 @@ document.body.appendChild(div);
 document.getElementById('continueBtn').onclick=function(){
   div.innerHTML='<p style="text-align:center;color:#555;">Generating file...</p>';
   setTimeout(function(){
+    processNext();
     document.body.removeChild(div);
   },500);
-  
-  processNext();
 };
 
 document.getElementById('closeBtn').onclick=function(){

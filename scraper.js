@@ -1,7 +1,7 @@
 (function(){
 
 // VERSION
-var VERSION = 'v2.1.5';
+var VERSION = 'v2.1.6';
 
 var HANDLERS={
   allsop:{
@@ -152,8 +152,12 @@ if(images.length===0 && pdfs.length===0){
 var propTitle=document.title || 'Property';
 var propUrl=window.location.href;
 
+var currentIndex=0;
+var imageQueue=[];
+
 function processNext(){
-  var output='<!DOCTYPE html><html><head><meta charset="UTF-8">';
+  if(currentIndex>=images.length){
+    var output='<!DOCTYPE html><html><head><meta charset="UTF-8">';
     output+='<title>'+propTitle+'</title>';
     output+='<style>';
     output+='*{box-sizing:border-box;margin:0;padding:0;}';
@@ -184,7 +188,7 @@ function processNext(){
     output+='.card-info{font-size:11px;color:#7f8c8d;margin-bottom:8px;}';
     output+='.card-controls{display:flex;align-items:center;gap:8px;margin-bottom:8px;}';
     output+='.card-controls input[type="checkbox"]{width:18px;height:18px;cursor:pointer;}';
-    output+='.card-controls select{flex:1;padding:5px;border:1px solid#ddd;border-radius:4px;font-size:12px;}';
+    output+='.card-controls select{flex:1;padding:5px;border:1px solid #ddd;border-radius:4px;font-size:12px;}';
     output+='.card-actions{display:flex;gap:5px;}';
     output+='.card-actions button{flex:1;padding:6px;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:bold;}';
     output+='.btn-view{background:#3498db;color:#fff;}';
@@ -422,6 +426,8 @@ function processNext(){
     alert('HTML file downloaded!\n\nOpen it to manage images and PDFs.');
     document.body.removeChild(div);
   }
+  
+  processNext();
 };
 
 var div=document.createElement('div');
@@ -436,9 +442,10 @@ document.body.appendChild(div);
 document.getElementById('continueBtn').onclick=function(){
   div.innerHTML='<p style="text-align:center;color:#555;">Generating file...</p>';
   setTimeout(function(){
-    processNext();
     document.body.removeChild(div);
   },500);
+  
+  processNext();
 };
 
 document.getElementById('closeBtn').onclick=function(){

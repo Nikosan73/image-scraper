@@ -1,7 +1,7 @@
 (function(){
 
 // VERSION
-var VERSION = 'v2.1.4';
+var VERSION = 'v2.1.5';
 
 var HANDLERS={
   allsop:{
@@ -152,12 +152,8 @@ if(images.length===0 && pdfs.length===0){
 var propTitle=document.title || 'Property';
 var propUrl=window.location.href;
 
-var currentIndex=0;
-var imageQueue=[];
-
 function processNext(){
-  if(currentIndex>=images.length){
-    var output='<!DOCTYPE html><html><head><meta charset="UTF-8">';
+  var output='<!DOCTYPE html><html><head><meta charset="UTF-8">';
     output+='<title>'+propTitle+'</title>';
     output+='<style>';
     output+='*{box-sizing:border-box;margin:0;padding:0;}';
@@ -426,8 +422,6 @@ function processNext(){
     alert('HTML file downloaded!\n\nOpen it to manage images and PDFs.');
     document.body.removeChild(div);
   }
-  
-  processNext();
 };
 
 var div=document.createElement('div');

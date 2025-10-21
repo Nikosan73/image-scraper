@@ -1,7 +1,7 @@
 (function(){
 
 // VERSION
-var VERSION = 'v2.1.6';
+var VERSION = 'v2.1.7';
 
 var HANDLERS={
   allsop:{
@@ -73,7 +73,8 @@ var HANDLERS={
   knightfrank:{
     name:'Knight Frank',
     detect:function(){
-      return window.location.hostname.includes('knightfrank.co');
+      return window.location.hostname.includes('knightfrank.co') && 
+         !window.location.hostname.includes('emails.knightfrank');
     },
     extract:function(){
       var u=[];

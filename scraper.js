@@ -1,7 +1,7 @@
 (function(){
 
 // VERSION
-var VERSION = 'v2.1.8';
+var VERSION = 'v2.1.9';
 
 var HANDLERS={
   allsop:{
@@ -87,34 +87,40 @@ var HANDLERS={
     detect:function(){return window.location.hostname.includes('loopnet.co')},
     extract:function(){
       var u=[];
-      document.querySelectorAll('img[srcset]').forEach(function(img){
+      document.querySelectorAll('img').forEach(function(img){
         var srcset=img.getAttribute('srcset');
-        if(!srcset)return;
-        var parts=srcset.split(',').map(function(p){return p.trim()});
-        var maxRes='';
-        var maxUrl='';
-        parts.forEach(function(part){
-          var match=part.match(/^(\S+)\s+(\d+)x$/);
-          if(match){
-            var url=match[1];
-            var res=parseInt(match[2]);
-            if(!maxRes||res>maxRes){
-              maxRes=res;
-              maxUrl=url;
-            }
-          }else{
-            var widthMatch=part.match(/^(\S+)\s+(\d+)w$/);
-            if(widthMatch){
-              var url=widthMatch[1];
-              var width=parseInt(widthMatch[2]);
-              if(!maxRes||width>maxRes){
-                maxRes=width;
+        if(srcset){
+          var parts=srcset.split(',').map(function(p){return p.trim()});
+          var maxRes='';
+          var maxUrl='';
+          parts.forEach(function(part){
+            var match=part.match(/^(\S+)\s+(\d+)x$/);
+            if(match){
+              var url=match[1];
+              var res=parseInt(match[2]);
+              if(!maxRes||res>maxRes){
+                maxRes=res;
                 maxUrl=url;
               }
+            }else{
+              var widthMatch=part.match(/^(\S+)\s+(\d+)w$/);
+              if(widthMatch){
+                var url=widthMatch[1];
+                var width=parseInt(widthMatch[2]);
+                if(!maxRes||width>maxRes){
+                  maxRes=width;
+                  maxUrl=url;
+                }
+              }
             }
+          });
+          if(maxUrl&&!u.includes(maxUrl))u.push(maxUrl);
+        }else{
+          var src=img.src;
+          if(src&&src.includes('images.loopnet.co')&&!u.includes(src)){
+            u.push(src);
           }
-        });
-        if(maxUrl&&!u.includes(maxUrl))u.push(maxUrl);
+        }
       });
       return u;
     }

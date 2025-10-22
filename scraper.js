@@ -1,7 +1,7 @@
 (function(){
 
 // VERSION
-var VERSION = 'v2.1.7';
+var VERSION = 'v2.1.8';
 
 var HANDLERS={
   allsop:{
@@ -38,34 +38,29 @@ var HANDLERS={
   propertylink:{
     name:'PropertyLink/Estates Gazette',
     detect:function(){
-      return window.location.hostname.includes('estatesgazette.com') || 
+      return window.location.hostname.includes('estatesgazette.com')||
              window.location.hostname.includes('propertylink');
     },
     extract:function(){
       var u=[];
       document.querySelectorAll('img[srcset]').forEach(function(img){
-        var srcset=img.srcset;
-        if(srcset && (srcset.includes('propertylinkassets') || srcset.includes('estatesgazette'))){
-          var matches=srcset.match(/https:\/\/[^\s]+\s+(\d+)w/g);
-          if(matches){
-            var maxWidth=0;
-            var maxUrl='';
-            matches.forEach(function(match){
-              var parts=match.match(/(https:\/\/[^\s]+)\s+(\d+)w/);
-              if(parts){
-                var url=parts[1];
-                var width=parseInt(parts[2]);
-                if(width>maxWidth){
-                  maxWidth=width;
-                  maxUrl=url;
-                }
-              }
-            });
-            if(maxUrl && !u.includes(maxUrl)){
-              u.push(maxUrl);
+        var srcset=img.getAttribute('srcset');
+        if(!srcset)return;
+        var parts=srcset.split(',').map(function(p){return p.trim()});
+        var maxWidth=0;
+        var maxUrl='';
+        parts.forEach(function(part){
+          var match=part.match(/^(\S+)\s+(\d+)w$/);
+          if(match){
+            var url=match[1];
+            var width=parseInt(match[2]);
+            if(width>maxWidth){
+              maxWidth=width;
+              maxUrl=url;
             }
           }
-        }
+        });
+        if(maxUrl&&!u.includes(maxUrl))u.push(maxUrl);
       });
       return u;
     }
@@ -74,15 +69,52 @@ var HANDLERS={
     name:'Knight Frank',
     detect:function(){
       return window.location.hostname.includes('knightfrank.co') && 
-         !window.location.hostname.includes('emails.knightfrank');
+             !window.location.hostname.includes('emails.knightfrank');
     },
     extract:function(){
       var u=[];
       document.querySelectorAll('img[data-src]').forEach(function(img){
         var dataSrc=img.dataset.src;
-        if(dataSrc && dataSrc.includes('content.knightfrank.com')){
-          if(!u.includes(dataSrc)) u.push(dataSrc);
+        if(dataSrc&&dataSrc.includes('content.knightfrank.com')){
+          if(!u.includes(dataSrc))u.push(dataSrc);
         }
+      });
+      return u;
+    }
+  },
+  loopnet:{
+    name:'LoopNet',
+    detect:function(){return window.location.hostname.includes('loopnet.co')},
+    extract:function(){
+      var u=[];
+      document.querySelectorAll('img[srcset]').forEach(function(img){
+        var srcset=img.getAttribute('srcset');
+        if(!srcset)return;
+        var parts=srcset.split(',').map(function(p){return p.trim()});
+        var maxRes='';
+        var maxUrl='';
+        parts.forEach(function(part){
+          var match=part.match(/^(\S+)\s+(\d+)x$/);
+          if(match){
+            var url=match[1];
+            var res=parseInt(match[2]);
+            if(!maxRes||res>maxRes){
+              maxRes=res;
+              maxUrl=url;
+            }
+          }else{
+            var widthMatch=part.match(/^(\S+)\s+(\d+)w$/);
+            if(widthMatch){
+              var url=widthMatch[1];
+              var width=parseInt(widthMatch[2]);
+              if(!maxRes||width>maxRes){
+                maxRes=width;
+                maxUrl=url;
+              }
+            }
+          }
+        });
+        if(maxUrl&&!u.includes(maxUrl))u.push(maxUrl);
       });
       return u;
     }
@@ -92,16 +124,16 @@ var HANDLERS={
     detect:function(){
       return!!document.querySelector('img[src^="data:image"]')||
         document.body.innerHTML.includes('cid:')||
-        !!document.querySelector('meta[name="Generator"][content*="Microsoft"]')||
-        !!document.querySelector('meta[name="ProgId"][content*="Word"]');
+        !!document.querySelector('meta[name="Generator"][content*="Microsoft"]');
     },
     extract:function(){
       var u=[];
-      document.querySelectorAll('img').forEach(function(img){
+      document.querySelectorAll('img[src]').forEach(function(img){
         var src=img.src;
-        if(src&&(src.startsWith('data:image')||src.includes('cid:'))){
-          if(!u.includes(src))u.push(src);
-        }
+        if(src.startsWith('data:image')||src.includes('cid:'))return;
+        if(src.endsWith('.gif')&&src.includes('/s.gif'))return;
+        if(img.width===1&&img.height===1)return;
+        if(!u.includes(src))u.push(src);
       });
       return u;
     }
@@ -112,38 +144,43 @@ var HANDLERS={
     extract:function(){
       var u=[];
       var seen={};
-      document.querySelectorAll('img').forEach(function(img){
-        var src=img.src;
-        var srcset=img.srcset;
-        if(srcset){
-          var matches=srcset.match(/https?:\/\/[^\s]+/g);
-          if(matches){
-            var urls=[];
-            matches.forEach(function(url){
-              var widthMatch=srcset.match(new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s+(\\d+)w'));
-              if(widthMatch){
-                urls.push({url:url,width:parseInt(widthMatch[1])});
-              }else{
-                urls.push({url:url,width:0});
-              }
-            });
-            urls.sort(function(a,b){return b.width-a.width});
-            if(urls[0]&&!seen[urls[0].url]){
-              u.push(urls[0].url);
-              seen[urls[0].url]=true;
-            }
+      document.querySelectorAll('img[src], img[data-src], source[srcset]').forEach(function(el){
+        if(el.tagName==='IMG'){
+          var src=el.src||el.dataset.src;
+          if(!src)return;
+          if(src.startsWith('data:'))return;
+          if(src.endsWith('.gif')&&src.includes('/s.gif'))return;
+          if(el.width===1&&el.height===1)return;
+          if(!seen[src]){
+            seen[src]=true;
+            u.push(src);
           }
-        }else if(src&&src.startsWith('http')&&!seen[src]){
-          u.push(src);
-          seen[src]=true;
-        }
-      });
-      document.querySelectorAll('[style*="background-image"]').forEach(function(el){
-        var style=el.getAttribute('style');
-        var m=style.match(/url\(['"]?([^'"()]+)['"]?\)/);
-        if(m&&m[1].startsWith('http')&&!seen[m[1]]){
-          u.push(m[1]);
-          seen[m[1]]=true;
+        }else if(el.tagName==='SOURCE'){
+          var srcset=el.getAttribute('srcset');
+          if(!srcset)return;
+          var parts=srcset.split(',').map(function(p){return p.trim()});
+          var maxWidth=0;
+          var maxUrl='';
+          parts.forEach(function(part){
+            var match=part.match(/^(\S+)\s+(\d+)w$/);
+            if(match){
+              var url=match[1];
+              var width=parseInt(match[2]);
+              if(width>maxWidth){
+                maxWidth=width;
+                maxUrl=url;
+              }
+            }else{
+              var simpleMatch=part.match(/^(\S+)/);
+              if(simpleMatch&&!maxUrl){
+                maxUrl=simpleMatch[1];
+              }
+            }
+          });
+          if(maxUrl&&!seen[maxUrl]){
+            seen[maxUrl]=true;
+            u.push(maxUrl);
+          }
         }
       });
       return u;
@@ -151,18 +188,32 @@ var HANDLERS={
   }
 };
 
-function extractPDFs(){
+function getPDFs(){
   var pdfs=[];
-  var seen={};
   
-  document.querySelectorAll('a[href$=".pdf"], a[href*=".pdf?"], a[href*=".pdf#"]').forEach(function(a){
-    var href=a.href;
-    if(href&&!seen[href]){
-      var text=a.textContent.trim()||a.title||'PDF Document';
-      pdfs.push({url:href,name:text});
-      seen[href]=true;
+  // Standard PDF links
+  document.querySelectorAll('a[href$=".pdf"], embed[src$=".pdf"], object[data$=".pdf"], iframe[src$=".pdf"]').forEach(function(el){
+    var url=el.href||el.src||el.data;
+    if(url&&!pdfs.some(function(p){return p.url===url})){
+      var name=el.textContent.trim()||el.title||'PDF Document';
+      pdfs.push({url:url,name:name});
     }
   });
+  
+  // Fallback: Search for "brochure" links if no PDFs found
+  if(pdfs.length===0){
+    document.querySelectorAll('a[href]').forEach(function(link){
+      var text=link.textContent.trim().toLowerCase();
+      var title=(link.title||'').toLowerCase();
+      if(text.includes('brochure')||title.includes('brochure')){
+        var url=link.href;
+        if(url&&!pdfs.some(function(p){return p.url===url})){
+          var name=link.textContent.trim()||link.title||'Brochure';
+          pdfs.push({url:url,name:name});
+        }
+      }
+    });
+  }
   
   return pdfs;
 }
@@ -176,290 +227,247 @@ for(var key in HANDLERS){
 }
 
 if(!handler){
-  alert('No handler found for this site');
+  alert('No handler detected!');
   return;
 }
 
-var urls=handler.extract();
-var pdfs=extractPDFs();
-
-if(urls.length===0&&pdfs.length===0){
-  alert('No images or PDFs found on this page.\n\nScraper: '+handler.name+'\nVersion: '+VERSION);
-  return;
-}
+var imageUrls=handler.extract();
+var pdfList=getPDFs();
 
 var div=document.createElement('div');
-div.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:30px;border:2px solid #333;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:999999;font-family:Arial,sans-serif;max-width:500px';
+div.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:30px;border:2px solid #333;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:999999;font-family:Arial,sans-serif;min-width:350px;border-radius:8px';
 
-var info='<div style="text-align:center">';
-info+='<h2 style="margin:0 0 15px 0;color:#333">Images & PDFs Found</h2>';
-info+='<p style="margin:10px 0;font-size:16px;color:#666"><strong>Images:</strong> '+urls.length+'</p>';
-info+='<p style="margin:10px 0;font-size:16px;color:#666"><strong>PDFs:</strong> '+pdfs.length+'</p>';
-info+='<p style="margin:10px 0;font-size:14px;color:#999">Scraper: '+handler.name+'</p>';
-info+='<p style="margin:10px 0;font-size:12px;color:#999">Version: '+VERSION+'</p>';
-info+='<div style="margin-top:20px">';
-info+='<button id="downloadBtn" style="background:#4CAF50;color:white;border:none;padding:12px 24px;font-size:16px;border-radius:5px;cursor:pointer;margin:5px">Generate HTML</button>';
-info+='<button id="closeBtn" style="background:#f44336;color:white;border:none;padding:12px 24px;font-size:16px;border-radius:5px;cursor:pointer;margin:5px">Close</button>';
-info+='</div></div>';
+div.innerHTML='<div style="margin-bottom:20px;text-align:center"><h2 style="margin:0 0 15px 0;color:#333;font-size:24px">Property Scraper</h2><p style="margin:5px 0;color:#666;font-size:14px"><strong>Version:</strong> '+VERSION+'</p><p style="margin:5px 0;color:#666;font-size:14px"><strong>Scraper:</strong> '+handler.name+'</p><p style="margin:10px 0;color:#333;font-size:16px"><strong>'+imageUrls.length+'</strong> images found</p><p style="margin:5px 0;color:#333;font-size:16px"><strong>'+pdfList.length+'</strong> PDFs found</p></div><div style="display:flex;gap:10px;justify-content:center"><button id="downloadBtn" style="padding:12px 24px;background:#4CAF50;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;font-weight:bold">Download Manager</button><button id="closeBtn" style="padding:12px 24px;background:#f44336;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;font-weight:bold">Close</button></div>';
 
-div.innerHTML=info;
 document.body.appendChild(div);
 
 document.getElementById('downloadBtn').onclick=function(){
-  this.disabled=true;
-  this.textContent='Processing...';
-  
-  var imageData=[];
-  var processed=0;
-  
-  function processNext(){
-    if(processed>=urls.length){
-      generateHTML();
-      return;
-    }
-    
-    var img=new Image();
-    var url=urls[processed];
-    
-    img.onload=function(){
-      var mp=(this.naturalWidth*this.naturalHeight/1000000).toFixed(2);
-      imageData.push({
-        url:url,
-        width:this.naturalWidth,
-        height:this.naturalHeight,
-        mp:parseFloat(mp)
-      });
-      processed++;
-      document.getElementById('downloadBtn').textContent='Processing '+processed+'/'+urls.length+'...';
-      processNext();
-    };
-    
-    img.onerror=function(){
-      imageData.push({
-        url:url,
-        width:0,
-        height:0,
-        mp:0
-      });
-      processed++;
-      document.getElementById('downloadBtn').textContent='Processing '+processed+'/'+urls.length+'...';
-      processNext();
-    };
-    
-    img.src=url;
+  if(imageUrls.length===0&&pdfList.length===0){
+    alert('No images or PDFs found to process!');
+    return;
   }
   
+  alert('Processing images...\n\nThis may take a moment for large images.');
+  
+  var imageData=[];
+  var processedCount=0;
+  
+  var processNext=function(){
+    if(processedCount<imageUrls.length){
+      var url=imageUrls[processedCount];
+      var img=new Image();
+      img.crossOrigin='anonymous';
+      
+      img.onload=function(){
+        var mp=(img.width*img.height/1000000).toFixed(2);
+        imageData.push({url:url,width:img.width,height:img.height,mp:parseFloat(mp)});
+        processedCount++;
+        processNext();
+      };
+      
+      img.onerror=function(){
+        imageData.push({url:url,width:0,height:0,mp:0});
+        processedCount++;
+        processNext();
+      };
+      
+      img.src=url;
+    }else{
+      generateHTML();
+    }
+  };
+  
   function generateHTML(){
-    var propTitle=document.title.replace(/[<>]/g,'');
+    var propTitle=document.title||'Property';
     var propUrl=window.location.href;
     
-    var output='<!DOCTYPE html><html><head><meta charset="UTF-8">';
-    output+='<title>Images & PDFs - '+propTitle+'</title>';
-    output+='<style>';
-    output+='*{box-sizing:border-box}';
+    var output='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Property Images & PDFs</title><style>';
     output+='body{font-family:Arial,sans-serif;margin:20px;background:#f5f5f5}';
     output+='.header{background:white;padding:20px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}';
     output+='.header h1{margin:0 0 10px 0;color:#333}';
     output+='.header p{margin:5px 0;color:#666}';
-    output+='.pdf-section{background:#e3f2fd;padding:20px;margin-bottom:20px;border-radius:8px;border-left:4px solid #2196F3}';
-    output+='.pdf-section h2{margin:0 0 15px 0;color:#1976D2}';
-    output+='.pdf-item{padding:10px;margin:10px 0;background:white;border-radius:4px;display:flex;align-items:center;gap:10px}';
-    output+='.pdf-item input{width:18px;height:18px;cursor:pointer}';
-    output+='.pdf-item a{color:#2196F3;text-decoration:none;flex:1}';
-    output+='.pdf-item a:hover{text-decoration:underline}';
-    output+='.pdf-tag-select{padding:5px;border:1px solid #ddd;border-radius:3px;background:white}';
-    output+='.filters{background:white;padding:20px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}';
-    output+='.filters h2{margin:0 0 15px 0;color:#333}';
-    output+='.filter-group{margin:10px 0}';
-    output+='.filter-group label{display:inline-block;width:100px;font-weight:bold}';
-    output+='.filter-group input{padding:5px;border:1px solid #ddd;border-radius:3px;width:100px}';
-    output+='.filter-group button{margin-left:10px;padding:8px 16px;background:#4CAF50;color:white;border:none;border-radius:4px;cursor:pointer}';
-    output+='.filter-group button:hover{background:#45a049}';
-    output+='.controls{background:white;padding:15px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1);display:flex;gap:10px;flex-wrap:wrap}';
-    output+='.controls button{padding:10px 20px;border:none;border-radius:4px;cursor:pointer;font-size:14px}';
-    output+='.btn-select{background:#2196F3;color:white}';
-    output+='.btn-deselect{background:#FF9800;color:white}';
-    output+='.btn-delete{background:#f44336;color:white}';
-    output+='.btn-export{background:#4CAF50;color:white}';
+    output+='.controls{background:white;padding:15px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}';
+    output+='.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:15px}';
+    output+='.filter-group{display:flex;flex-direction:column}';
+    output+='.filter-group label{font-size:12px;color:#666;margin-bottom:3px}';
+    output+='.filter-group input{padding:5px;border:1px solid #ddd;border-radius:4px}';
+    output+='.buttons{display:flex;gap:10px;flex-wrap:wrap}';
+    output+='.buttons button{padding:10px 20px;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px}';
+    output+='.btn-primary{background:#4CAF50;color:white}';
+    output+='.btn-secondary{background:#2196F3;color:white}';
+    output+='.btn-danger{background:#f44336;color:white}';
+    output+='.btn-primary:hover{background:#45a049}';
+    output+='.btn-secondary:hover{background:#0b7dda}';
+    output+='.btn-danger:hover{background:#da190b}';
     output+='.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:20px}';
-    output+='.card{background:white;border:2px solid #ddd;border-radius:8px;overflow:hidden;transition:all 0.3s}';
-    output+='.card:hover{transform:translateY(-5px);box-shadow:0 4px 12px rgba(0,0,0,0.15)}';
-    output+='.card.selected{border-color:#4CAF50;box-shadow:0 0 10px rgba(76,175,80,0.5)}';
-    output+='.card.deleted{display:none}';
-    output+='.card.error{opacity:0.5;background:#f5f5f5}';
-    output+='.img-wrapper{position:relative;padding-top:75%;background:#f9f9f9;overflow:hidden}';
-    output+='.img-wrapper img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain}';
-    output+='.card-info{padding:12px}';
-    output+='.card-info div{margin:5px 0;font-size:12px;color:#666}';
-    output+='.checkbox-container{text-align:center;padding:10px;border-top:1px solid #eee}';
-    output+='.checkbox-container input{width:20px;height:20px;cursor:pointer}';
-    output+='.tag-container{padding:10px;border-top:1px solid #eee}';
-    output+='.tag-select{width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:12px;cursor:pointer}';
-    output+='.download-btn{display:block;width:100%;padding:10px;background:#2196F3;color:white;text-align:center;text-decoration:none;border:none;cursor:pointer;font-size:14px}';
-    output+='.download-btn:hover{background:#1976D2}';
+    output+='.image-card{background:white;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);transition:transform 0.2s}';
+    output+='.image-card:hover{transform:translateY(-5px);box-shadow:0 4px 12px rgba(0,0,0,0.2)}';
+    output+='.image-card img{width:100%;height:200px;object-fit:cover;display:block}';
+    output+='.image-info{padding:15px}';
+    output+='.image-info p{margin:5px 0;font-size:13px;color:#666}';
+    output+='.image-actions{display:flex;gap:5px;margin-top:10px}';
+    output+='.image-actions select,.image-actions a{flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:12px;text-decoration:none;text-align:center;background:white;color:#333}';
+    output+='.image-actions a{background:#4CAF50;color:white;border:none}';
+    output+='.image-actions a:hover{background:#45a049}';
+    output+='.checkbox-container{display:flex;align-items:center;gap:8px;margin-bottom:10px}';
+    output+='.checkbox-container input[type="checkbox"]{width:18px;height:18px;cursor:pointer}';
+    output+='.checkbox-container label{font-size:14px;color:#333;cursor:pointer}';
+    output+='.pdf-section{background:white;padding:20px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}';
+    output+='.pdf-section h2{margin:0 0 15px 0;color:#333;font-size:20px}';
+    output+='.pdf-list{display:flex;flex-direction:column;gap:10px}';
+    output+='.pdf-item{display:flex;align-items:center;gap:10px;padding:10px;background:#f9f9f9;border-radius:4px}';
+    output+='.pdf-item input[type="checkbox"]{width:18px;height:18px;cursor:pointer}';
+    output+='.pdf-item a{flex:1;color:#2196F3;text-decoration:none;font-size:14px}';
+    output+='.pdf-item a:hover{text-decoration:underline}';
+    output+='.pdf-item select{padding:5px;border:1px solid #ddd;border-radius:4px;font-size:12px;min-width:150px}';
     output+='</style></head><body>';
     
     output+='<div class="header">';
     output+='<h1>'+propTitle+'</h1>';
     output+='<p><strong>URL:</strong> <a href="'+propUrl+'" target="_blank">'+propUrl+'</a></p>';
-    output+='<p><strong>Images Found:</strong> '+imageData.length+'</p>';
-    output+='<p><strong>PDFs Found:</strong> '+pdfs.length+'</p>';
+    output+='<p><strong>Images:</strong> '+imageData.length+' | <strong>PDFs:</strong> '+pdfList.length+'</p>';
+    output+='<p><strong>Scraper:</strong> '+handler.name+' | <strong>Version:</strong> '+VERSION+'</p>';
     output+='</div>';
     
-    if(pdfs.length>0){
+    if(pdfList.length>0){
       output+='<div class="pdf-section">';
       output+='<h2>📄 PDF Documents</h2>';
-      pdfs.forEach(function(pdf,i){
+      output+='<div class="pdf-list">';
+      pdfList.forEach(function(pdf,idx){
         output+='<div class="pdf-item">';
-        output+='<input type="checkbox" id="pdf'+i+'" checked>';
+        output+='<input type="checkbox" class="pdf-checkbox" data-index="'+idx+'">';
         output+='<a href="'+pdf.url+'" target="_blank">'+pdf.name+'</a>';
-        output+='<select class="pdf-tag-select" data-pdfid="'+i+'" onchange="pdfTagChanged('+i+',this.value)">';
+        output+='<select class="pdf-tag" data-index="'+idx+'">';
         output+='<option value="">No Tag</option>';
         output+='<option value="Marketing Brochure">Marketing Brochure</option>';
+        output+='<option value="Floor Plan">Floor Plan</option>';
+        output+='<option value="Legal Pack">Legal Pack</option>';
+        output+='<option value="Title Deeds">Title Deeds</option>';
+        output+='<option value="EPC">EPC</option>';
         output+='</select>';
         output+='</div>';
       });
       output+='</div>';
+      output+='</div>';
     }
     
-    output+='<div class="filters">';
-    output+='<h2>Filters</h2>';
-    output+='<div class="filter-group">';
-    output+='<label>Min MP:</label><input type="number" id="minMP" value="0.8" step="0.1">';
-    output+='<label style="margin-left:20px">Max MP:</label><input type="number" id="maxMP" value="50" step="0.1">';
-    output+='<button onclick="applyFilters()">Apply Filters</button>';
-    output+='</div>';
-    output+='</div>';
-    
     output+='<div class="controls">';
-    output+='<button class="btn-select" onclick="selectAll()">✓ Select All</button>';
-    output+='<button class="btn-deselect" onclick="deselectAll()">✗ Deselect All</button>';
-    output+='<button class="btn-delete" onclick="deleteSelected()">🗑 Delete Selected</button>';
-    output+='<button class="btn-export" onclick="exportCSV()">📊 Export CSV</button>';
+    output+='<div class="filters">';
+    output+='<div class="filter-group"><label>Min MP:</label><input type="number" id="minMP" step="0.1" placeholder="e.g. 0.8"></div>';
+    output+='<div class="filter-group"><label>Max MP:</label><input type="number" id="maxMP" step="0.1" placeholder="e.g. 5.0"></div>';
+    output+='</div>';
+    output+='<div class="buttons">';
+    output+='<button class="btn-primary" onclick="applyFilters()">Apply Filters</button>';
+    output+='<button class="btn-secondary" onclick="selectAll()">Select All</button>';
+    output+='<button class="btn-secondary" onclick="deselectAll()">Deselect All</button>';
+    output+='<button class="btn-danger" onclick="deleteSelected()">Delete Selected</button>';
+    output+='<button class="btn-primary" onclick="exportCSV()">Export CSV</button>';
+    output+='</div>';
     output+='</div>';
     
     output+='<div class="gallery" id="gallery">';
     imageData.forEach(function(img,idx){
-      var errorClass=img.width===0?' error':'';
-      output+='<div class="card'+errorClass+'" data-idx="'+idx+'" data-mp="'+img.mp+'">';
-      output+='<div class="img-wrapper">';
-      if(img.width>0){
-        output+='<img src="'+img.url+'" alt="Image '+(idx+1)+'">';
-      }else{
-        output+='<div style="padding:20px;text-align:center;color:#999">Failed to load</div>';
-      }
+      output+='<div class="image-card" data-index="'+idx+'" data-mp="'+img.mp+'">';
+      output+='<img src="'+img.url+'" alt="Image '+(idx+1)+'">';
+      output+='<div class="image-info">';
+      output+='<div class="checkbox-container">';
+      output+='<input type="checkbox" id="cb'+idx+'" class="image-checkbox">';
+      output+='<label for="cb'+idx+'">Select</label>';
       output+='</div>';
-      output+='<div class="card-info">';
-      output+='<div><strong>Image #'+(idx+1)+'</strong></div>';
-      if(img.width>0){
-        output+='<div>'+img.width+' × '+img.height+' px</div>';
-        output+='<div>'+img.mp+' MP</div>';
-      }
-      output+='</div>';
-      output+='<div class="tag-container">';
-      output+='<select class="tag-select" data-idx="'+idx+'" onchange="tagChanged('+idx+',this.value)">';
+      output+='<p><strong>Image '+(idx+1)+'</strong></p>';
+      output+='<p>'+img.width+' × '+img.height+' px</p>';
+      output+='<p>'+img.mp+' MP</p>';
+      output+='<div class="image-actions">';
+      output+='<select class="image-tag" data-index="'+idx+'">';
       output+='<option value="">No Tag</option>';
       output+='<option value="Primary Image">Primary Image</option>';
       output+='<option value="Alternate Image 1">Alternate Image 1</option>';
       output+='<option value="Alternate Image 2">Alternate Image 2</option>';
       output+='<option value="ProMap">ProMap</option>';
       output+='</select>';
+      output+='<a href="'+img.url+'" download="Image_'+(idx+1)+'.jpg">Download</a>';
       output+='</div>';
-      output+='<div class="checkbox-container">';
-      output+='<input type="checkbox" data-idx="'+idx+'">';
       output+='</div>';
-      output+='<a href="'+img.url+'" download="Image_'+(idx+1)+'.jpg" class="download-btn">⬇ Download</a>';
       output+='</div>';
     });
     output+='</div>';
     
     output+='<script>';
     output+='var imageData='+JSON.stringify(imageData)+';';
+    output+='var pdfList='+JSON.stringify(pdfList)+';';
+    output+='var propTitle="'+propTitle.replace(/"/g,'\\"')+'";';
+    output+='var propUrl="'+propUrl.replace(/"/g,'\\"')+'";';
+    
     output+='var tags={};';
     output+='var pdfTags={};';
-    output+='var propTitle="'+propTitle.replace(/"/g,'\\"')+'";';
-    output+='var propUrl="'+propUrl+'";';
+    
+    output+='document.querySelectorAll(".image-tag").forEach(function(sel){';
+    output+='sel.addEventListener("change",function(){';
+    output+='var idx=parseInt(this.dataset.index);';
+    output+='var val=this.value;';
+    output+='if(val==="Primary Image"||val==="Alternate Image 1"||val==="Alternate Image 2"||val==="ProMap"){';
+    output+='document.querySelectorAll(".image-tag").forEach(function(other){';
+    output+='if(other!==sel&&other.value===val)other.value="";';
+    output+='});';
+    output+='}';
+    output+='tags[idx]=val;';
+    output+='});';
+    output+='});';
+    
+    output+='document.querySelectorAll(".pdf-tag").forEach(function(sel){';
+    output+='sel.addEventListener("change",function(){';
+    output+='var idx=parseInt(this.dataset.index);';
+    output+='var val=this.value;';
+    output+='if(val==="Marketing Brochure"){';
+    output+='document.querySelectorAll(".pdf-tag").forEach(function(other){';
+    output+='if(other!==sel&&other.value==="Marketing Brochure")other.value="";';
+    output+='});';
+    output+='}';
+    output+='pdfTags[idx]=val;';
+    output+='});';
+    output+='});';
     
     output+='function applyFilters(){';
     output+='var minMP=parseFloat(document.getElementById("minMP").value)||0;';
-    output+='var maxMP=parseFloat(document.getElementById("maxMP").value)||999;';
-    output+='document.querySelectorAll(".card").forEach(function(card){';
+    output+='var maxMP=parseFloat(document.getElementById("maxMP").value)||Infinity;';
+    output+='document.querySelectorAll(".image-card").forEach(function(card){';
     output+='var mp=parseFloat(card.dataset.mp);';
     output+='if(mp>=minMP&&mp<=maxMP){';
     output+='card.style.display="block";';
     output+='}else{';
     output+='card.style.display="none";';
-    output+='card.querySelector("input[type=checkbox]").checked=false;';
     output+='}';
     output+='});';
     output+='}';
     
     output+='function selectAll(){';
-    output+='document.querySelectorAll(".card:not(.deleted)").forEach(function(card){';
+    output+='document.querySelectorAll(".image-card").forEach(function(card){';
     output+='if(card.style.display!=="none"){';
-    output+='card.querySelector("input[type=checkbox]").checked=true;';
-    output+='card.classList.add("selected");';
+    output+='card.querySelector(".image-checkbox").checked=true;';
     output+='}';
     output+='});';
     output+='}';
     
     output+='function deselectAll(){';
-    output+='document.querySelectorAll(".card input[type=checkbox]").forEach(function(cb){';
-    output+='cb.checked=false;';
-    output+='cb.closest(".card").classList.remove("selected");';
-    output+='});';
+    output+='document.querySelectorAll(".image-checkbox").forEach(function(cb){cb.checked=false;});';
     output+='}';
     
     output+='function deleteSelected(){';
-    output+='var count=0;';
-    output+='document.querySelectorAll(".card input[type=checkbox]:checked").forEach(function(cb){';
-    output+='cb.closest(".card").classList.add("deleted");';
-    output+='count++;';
-    output+='});';
-    output+='alert("Deleted "+count+" image(s)");';
-    output+='}';
-    
-    output+='function tagChanged(idx,value){';
-    output+='if(value){';
-    output+='for(var i in tags){';
-    output+='if(tags[i]===value&&i!=idx){';
-    output+='tags[i]="";';
-    output+='document.querySelector(".tag-select[data-idx=\\""+i+"\\"]").value="";';
-    output+='}';
-    output+='}';
-    output+='}';
-    output+='tags[idx]=value;';
-    output+='}';
-    
-    output+='function pdfTagChanged(pdfId,value){';
-    output+='if(value==="Marketing Brochure"){';
-    output+='for(var i in pdfTags){if(pdfTags[i]==="Marketing Brochure"&&i!=pdfId)pdfTags[i]="";}';
-    output+='document.querySelectorAll(".pdf-tag-select").forEach(function(sel){';
-    output+='var id=sel.dataset.pdfid;';
-    output+='if(id!=pdfId&&sel.value==="Marketing Brochure")sel.value="";';
+    output+='if(!confirm("Delete selected images?"))return;';
+    output+='document.querySelectorAll(".image-checkbox:checked").forEach(function(cb){';
+    output+='cb.closest(".image-card").remove();';
     output+='});';
     output+='}';
-    output+='pdfTags[pdfId]=value;';
-    output+='}';
-    
-    output+='document.querySelectorAll(".card input[type=checkbox]").forEach(function(cb){';
-    output+='cb.addEventListener("change",function(){';
-    output+='if(this.checked){';
-    output+='this.closest(".card").classList.add("selected");';
-    output+='}else{';
-    output+='this.closest(".card").classList.remove("selected");';
-    output+='}';
-    output+='});';
-    output+='});';
     
     output+='function exportCSV(){';
     output+='var selectedImages=[];';
-    output+='document.querySelectorAll(".card:not(.deleted) input[type=checkbox]:checked").forEach(function(cb){';
-    output+='selectedImages.push(parseInt(cb.dataset.idx));';
+    output+='document.querySelectorAll(".image-checkbox:checked").forEach(function(cb){';
+    output+='var card=cb.closest(".image-card");';
+    output+='selectedImages.push(parseInt(card.dataset.index));';
     output+='});';
     output+='var selectedPDFs=[];';
-    output+='document.querySelectorAll(".pdf-item input:checked").forEach(function(cb){';
-    output+='var idx=parseInt(cb.id.replace("pdf",""));';
+    output+='document.querySelectorAll(".pdf-checkbox:checked").forEach(function(cb){';
+    output+='var idx=parseInt(cb.dataset.index);';
     output+='var url=cb.nextElementSibling.href;';
     output+='var name=cb.nextElementSibling.textContent;';
     output+='var tag=pdfTags[idx]||"";';

@@ -1,7 +1,7 @@
 (function(){
 
 // VERSION
-var VERSION = 'v2.1.9';
+var VERSION = 'v2.2.0';
 
 var HANDLERS={
   allsop:{
@@ -257,25 +257,56 @@ document.getElementById('downloadBtn').onclick=function(){
   
   var imageData=[];
   var processedCount=0;
+  var loadTimeout=5000; // 5 second timeout per image
   
   var processNext=function(){
     if(processedCount<imageUrls.length){
       var url=imageUrls[processedCount];
       var img=new Image();
-      img.crossOrigin='anonymous';
+      var timeoutId;
+      var completed=false;
       
-      img.onload=function(){
-        var mp=(img.width*img.height/1000000).toFixed(2);
-        imageData.push({url:url,width:img.width,height:img.height,mp:parseFloat(mp)});
+      // Don't use crossOrigin for same-origin images
+      var urlObj;
+      try{
+        urlObj=new URL(url);
+        if(urlObj.origin!==window.location.origin){
+          img.crossOrigin='anonymous';
+        }
+      }catch(e){
+        // Invalid URL, skip crossOrigin
+      }
+      
+      var completeLoad=function(width,height){
+        if(completed)return;
+        completed=true;
+        clearTimeout(timeoutId);
+        var mp=(width*height/1000000).toFixed(2);
+        imageData.push({url:url,width:width,height:height,mp:parseFloat(mp)});
         processedCount++;
         processNext();
+      };
+      
+      img.onload=function(){
+        completeLoad(img.naturalWidth||img.width,img.naturalHeight||img.height);
       };
       
       img.onerror=function(){
-        imageData.push({url:url,width:0,height:0,mp:0});
-        processedCount++;
-        processNext();
+        // Try without CORS if it failed
+        if(img.crossOrigin){
+          img.crossOrigin=null;
+          img.src=url+'?'+Date.now();
+        }else{
+          completeLoad(0,0);
+        }
       };
+      
+      // Timeout fallback
+      timeoutId=setTimeout(function(){
+        if(!completed){
+          completeLoad(0,0);
+        }
+      },loadTimeout);
       
       img.src=url;
     }else{

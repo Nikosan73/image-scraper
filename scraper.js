@@ -405,7 +405,7 @@ document.getElementById('downloadBtn').onclick=function(){
     
     if(pdfList.length>0){
       output+='<div class="pdf-section">';
-      output+='<h2>ðŸ“„ PDF Documents</h2>';
+      output+='<h2>&#128196; PDF Documents</h2>';
       output+='<div class="pdf-list">';
       pdfList.forEach(function(pdf,idx){
         output+='<div class="pdf-item">';

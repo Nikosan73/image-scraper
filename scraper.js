@@ -1,7 +1,7 @@
 (function(){
 
 // VERSION
-var VERSION = 'v2.2.0';
+var VERSION = 'v2.3.0';
 
 var HANDLERS={
   allsop:{
@@ -197,28 +197,65 @@ var HANDLERS={
 function getPDFs(){
   var pdfs=[];
   
-  // Standard PDF links
-  document.querySelectorAll('a[href$=".pdf"], embed[src$=".pdf"], object[data$=".pdf"], iframe[src$=".pdf"]').forEach(function(el){
+  // Helper: check if URL looks like a junk/generic PDF we should skip
+  var isJunkPDF=function(url){
+    var lower=url.toLowerCase();
+    return lower.includes('terms-of-use')||lower.includes('terms_of_use')||
+           lower.includes('cookie-policy')||lower.includes('cookie_policy')||
+           lower.includes('privacy-policy')||lower.includes('privacy_policy');
+  };
+  
+  // Helper: extract a readable name from a PDF URL
+  var nameFromUrl=function(url){
+    try{
+      var filename=url.split('/').pop().split('?')[0];
+      // Remove extension, replace underscores/hyphens with spaces
+      return filename.replace(/\.pdf$/i,'').replace(/[_-]/g,' ')||'PDF Document';
+    }catch(e){return 'PDF Document';}
+  };
+  
+  // 1. Standard PDF links (case-insensitive: matches .pdf, .PDF, .Pdf etc.)
+  document.querySelectorAll('a[href], embed[src], object[data], iframe[src]').forEach(function(el){
     var url=el.href||el.src||el.data;
-    if(url&&!pdfs.some(function(p){return p.url===url})){
-      var name=el.textContent.trim()||el.title||'PDF Document';
+    if(!url)return;
+    if(!/\.pdf(\?.*)?$/i.test(url))return; // case-insensitive .pdf check
+    if(isJunkPDF(url))return;
+    if(!pdfs.some(function(p){return p.url===url})){
+      var name=el.textContent.trim()||el.title||nameFromUrl(url);
       pdfs.push({url:url,name:name});
     }
   });
   
-  // Fallback: Search for "brochure" links if no PDFs found
+  // 2. Fallback: Search for "brochure" links if no PDFs found
   if(pdfs.length===0){
     document.querySelectorAll('a[href]').forEach(function(link){
       var text=link.textContent.trim().toLowerCase();
       var title=(link.title||'').toLowerCase();
       if(text.includes('brochure')||title.includes('brochure')){
         var url=link.href;
-        if(url&&!pdfs.some(function(p){return p.url===url})){
+        if(url&&!isJunkPDF(url)&&!pdfs.some(function(p){return p.url===url})){
           var name=link.textContent.trim()||link.title||'Brochure';
           pdfs.push({url:url,name:name});
         }
       }
     });
+  }
+  
+  // 3. Fallback: Regex-scan page HTML for PDF URLs hidden in script tags / SPA bundles
+  // Catches sites like Savills where brochure URL is in JS, not in an <a> tag
+  if(pdfs.length===0){
+    var html=document.documentElement.innerHTML;
+    var matches=html.match(/https?:\/\/[^"'\s<>]+\.pdf/gi);
+    if(matches){
+      matches.forEach(function(url){
+        // Clean any trailing punctuation or escapes
+        url=url.replace(/\\u002F/g,'/').replace(/\\"/g,'');
+        if(isJunkPDF(url))return;
+        if(!pdfs.some(function(p){return p.url===url})){
+          pdfs.push({url:url,name:nameFromUrl(url)});
+        }
+      });
+    }
   }
   
   return pdfs;
@@ -368,7 +405,7 @@ document.getElementById('downloadBtn').onclick=function(){
     
     if(pdfList.length>0){
       output+='<div class="pdf-section">';
-      output+='<h2>📄 PDF Documents</h2>';
+      output+='<h2>ðŸ“„ PDF Documents</h2>';
       output+='<div class="pdf-list">';
       pdfList.forEach(function(pdf,idx){
         output+='<div class="pdf-item">';
@@ -412,7 +449,7 @@ document.getElementById('downloadBtn').onclick=function(){
       output+='<label for="cb'+idx+'">Select</label>';
       output+='</div>';
       output+='<p><strong>Image '+(idx+1)+'</strong></p>';
-      output+='<p>'+img.width+' × '+img.height+' px</p>';
+      output+='<p>'+img.width+' Ã— '+img.height+' px</p>';
       output+='<p>'+img.mp+' MP</p>';
       output+='<div class="image-actions">';
       output+='<select class="image-tag" data-index="'+idx+'">';

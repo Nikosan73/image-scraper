@@ -1,7 +1,7 @@
 (function(){
 
 // VERSION
-var VERSION = 'v2.3.0';
+var VERSION = 'v2.3.1';
 
 var HANDLERS={
   allsop:{
@@ -28,9 +28,12 @@ var HANDLERS={
     detect:function(){return window.location.hostname.includes('zoopla.co.uk')},
     extract:function(){
       var u=[];
+      // Page now offers only small sizes; rewrite each URL to 2400x1800, which the CDN still serves
       document.querySelectorAll('picture.tnabq04 source[type="image/jpeg"]').forEach(function(s){
-        var m=s.srcset.match(/https:\/\/[^\s]+2400\/1800\/[^\s]+\.jpg/);
-        if(m&&!u.includes(m[0]))u.push(m[0]);
+        var m=s.srcset.match(/https:\/\/lid\.zoocdn\.com\/u\/\d+\/\d+\/[^\s:,]+\.jpg/);
+        if(!m)return;
+        var url=m[0].replace(/\/u\/\d+\/\d+\//,'/u/2400/1800/');
+        if(!u.includes(url))u.push(url);
       });
       return u;
     }
@@ -86,43 +89,18 @@ var HANDLERS={
     name:'LoopNet',
     detect:function(){return window.location.hostname.includes('loopnet.co')},
     extract:function(){
-      var u=[];
-      document.querySelectorAll('img').forEach(function(img){
-        var srcset=img.getAttribute('srcset');
-        if(srcset){
-          var parts=srcset.split(',').map(function(p){return p.trim()});
-          var maxRes='';
-          var maxUrl='';
-          parts.forEach(function(part){
-            var match=part.match(/^(\S+)\s+(\d+)x$/);
-            if(match){
-              var url=match[1];
-              var res=parseInt(match[2]);
-              if(!maxRes||res>maxRes){
-                maxRes=res;
-                maxUrl=url;
-              }
-            }else{
-              var widthMatch=part.match(/^(\S+)\s+(\d+)w$/);
-              if(widthMatch){
-                var url=widthMatch[1];
-                var width=parseInt(widthMatch[2]);
-                if(!maxRes||width>maxRes){
-                  maxRes=width;
-                  maxUrl=url;
-                }
-              }
-            }
-          });
-          if(maxUrl&&!u.includes(maxUrl))u.push(maxUrl);
-        }else{
-          var src=img.src;
-          if(src&&src.includes('images.loopnet.co')&&!u.includes(src)){
-            u.push(src);
-          }
-        }
-      });
-      return u;
+      // Carousel renders only nearby slides, so read every photo URL from the page source
+      var rank={Large:1,HighDefinition:2,LargeHighDefinition:3};
+      var best={};
+      var re=/images\.loopnet\.co[^"'\s\\<>]+?\/([^\/"'\s\\<>]+?-Photo-(\d+))-(LargeHighDefinition|HighDefinition|Large)\.jpg/g;
+      var html=document.documentElement.innerHTML;
+      var m;
+      while((m=re.exec(html))!==null){
+        var key=m[1],r=rank[m[3]];
+        // Keep the largest size seen for each photo
+        if(!best[key]||r>best[key].r)best[key]={url:'https://'+m[0],r:r,n:parseInt(m[2])};
+      }
+      return Object.keys(best).map(function(k){return best[k]}).sort(function(a,b){return a.n-b.n}).map(function(b){return b.url});
     }
   },
   email:{
@@ -413,11 +391,14 @@ document.getElementById('downloadBtn').onclick=function(){
         output+='<a href="'+pdf.url+'" target="_blank">'+pdf.name+'</a>';
         output+='<select class="pdf-tag" data-index="'+idx+'">';
         output+='<option value="">No Tag</option>';
-        output+='<option value="Marketing Brochure">Marketing Brochure</option>';
-        output+='<option value="Floor Plan">Floor Plan</option>';
-        output+='<option value="Legal Pack">Legal Pack</option>';
-        output+='<option value="Title Deeds">Title Deeds</option>';
-        output+='<option value="EPC">EPC</option>';
+        output+='<option value="Brochure">Brochure</option>';
+        output+='<option value="Drawing">Drawing</option>';
+        output+='<option value="Contract">Contract</option>';
+        output+='<option value="Other">Other</option>';
+        output+='<option value="Planning Documents">Planning Documents</option>';
+        output+='<option value="Planning Decision">Planning Decision</option>';
+        output+='<option value="Pre-App Docs & Reply">Pre-App Docs &amp; Reply</option>';
+        output+='<option value="TBC">TBC</option>';
         output+='</select>';
         output+='</div>';
       });
@@ -492,11 +473,6 @@ document.getElementById('downloadBtn').onclick=function(){
     output+='sel.addEventListener("change",function(){';
     output+='var idx=parseInt(this.dataset.index);';
     output+='var val=this.value;';
-    output+='if(val==="Marketing Brochure"){';
-    output+='document.querySelectorAll(".pdf-tag").forEach(function(other){';
-    output+='if(other!==sel&&other.value==="Marketing Brochure")other.value="";';
-    output+='});';
-    output+='}';
     output+='pdfTags[idx]=val;';
     output+='});';
     output+='});';

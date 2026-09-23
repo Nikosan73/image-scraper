@@ -1,7 +1,7 @@
 (function(){
 
 // VERSION
-var VERSION = 'v2.3.1';
+var VERSION = 'v2.3.2';
 
 var HANDLERS={
   allsop:{
@@ -101,6 +101,29 @@ var HANDLERS={
         if(!best[key]||r>best[key].r)best[key]={url:'https://'+m[0],r:r,n:parseInt(m[2])};
       }
       return Object.keys(best).map(function(k){return best[k]}).sort(function(a,b){return a.n-b.n}).map(function(b){return b.url});
+    }
+  },
+  rightmove:{
+    name:'Rightmove',
+    detect:function(){return window.location.hostname.includes('rightmove.co.uk')},
+    extract:function(){
+      // Collect every listing photo and floorplan URL in the page source, thumbnails included
+      var re=/media\.rightmove\.co\.uk\/(?:dir\/)?(property-photo|property-floorplan)\/([0-9a-f]+)\/(\d+)\/([0-9a-f]{32})(?:_max_\d+x\d+)?\.(jpe?g|png|gif)/g;
+      var html=document.documentElement.innerHTML;
+      var items=[],seen={},count={},m;
+      while((m=re.exec(html))!==null){
+        if(seen[m[4]])continue;
+        seen[m[4]]=true;
+        count[m[3]]=(count[m[3]]||0)+1;
+        // Full size = thumbnail URL without /dir and _max_WxH
+        items.push({type:m[1],id:m[3],url:'https://media.rightmove.co.uk/'+m[1]+'/'+m[2]+'/'+m[3]+'/'+m[4]+'.'+m[5]});
+      }
+      // Keep only the listing's own images: the folder id that appears most often
+      var top=null;
+      for(var k in count){if(!top||count[k]>count[top])top=k;}
+      var photos=items.filter(function(i){return i.id===top&&i.type==='property-photo'});
+      var plans=items.filter(function(i){return i.id===top&&i.type==='property-floorplan'});
+      return photos.concat(plans).map(function(i){return i.url});
     }
   },
   email:{
